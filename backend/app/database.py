@@ -62,8 +62,12 @@ def get_qdrant():
         from qdrant_client import QdrantClient
 
         if settings.qdrant_mode == "local":
-            _qdrant_client = QdrantClient(path=settings.qdrant_local_path)
-            logger.info("Qdrant: local embedded mode at %s", settings.qdrant_local_path)
+            try:
+                _qdrant_client = QdrantClient(path=settings.qdrant_local_path)
+                logger.info("Qdrant: local embedded mode at %s", settings.qdrant_local_path)
+            except Exception as e:
+                logger.warning("Qdrant local path locked (%s), falling back to in-memory Qdrant client", e)
+                _qdrant_client = QdrantClient(":memory:")
         else:
             kwargs = {"url": settings.qdrant_url}
             if settings.qdrant_api_key:

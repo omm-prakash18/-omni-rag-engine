@@ -29,12 +29,31 @@ def _score_chunk_relevance(query: str, chunk: Dict[str, Any]) -> float:
     if query_clean in conversational or len(query_clean) < 3:
         return 0.0
 
-    query_terms = [t.lower() for t in re.findall(r"\w+", query) if len(t) > 2]
+    # Stopwords filter to focus relevance on domain keywords
+    stopwords = {"and", "the", "for", "with", "between", "disagreement", "difference", "reported", "trends", "which", "claims", "that"}
+    # Extract terms including percentage rates (e.g., 2.8%, 3.2%, 5.25%)
+    raw_terms = re.findall(r"\b\d+(?:\.\d+)?%?\b|\b[a-zA-Z]{2,}\b", query)
+    query_terms = [t.lower() for t in raw_terms if t.lower() not in stopwords]
     if not query_terms:
         return 0.0
 
     raw_text = (chunk.get("raw_text", "") + " " + chunk.get("title", "")).lower()
-    matches = sum(1 for term in query_terms if term in raw_text)
+    
+    # Synonym expansions
+    synonyms = {
+        "pce": ["pce", "personal consumption expenditures", "core pce"],
+        "cpi": ["cpi", "consumer price index", "headline cpi"],
+        "fed": ["fed", "federal reserve", "fomc", "benchmark"],
+        "gdp": ["gdp", "gross domestic product", "growth"],
+    }
+    
+    matches = 0
+    for term in query_terms:
+        if term in synonyms:
+            if any(syn in raw_text for syn in synonyms[term]):
+                matches += 1
+        elif term in raw_text:
+            matches += 1
     
     term_ratio = matches / len(query_terms)
     vector_score = chunk.get("score", 0.0)
@@ -44,7 +63,7 @@ def _score_chunk_relevance(query: str, chunk: Dict[str, Any]) -> float:
         return 0.0
 
     # Weighted combination of vector cosine similarity & term overlap
-    combined_score = (vector_score * 0.4) + (term_ratio * 0.6)
+    combined_score = (vector_score * 0.3) + (term_ratio * 0.7)
     return round(combined_score, 4)
 
 

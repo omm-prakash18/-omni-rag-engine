@@ -159,5 +159,24 @@ def run_synthesizer_agent(
                     "claims": claims,
                 })
 
-    logger.info("Synthesizer Agent: formed %d candidate claim groups", len(candidate_groups))
+    # Lost in the Middle reordering: place highest relevance chunks at beginning and end of candidate group lists
+    for grp in candidate_groups:
+        claims = grp["claims"]
+        if len(claims) > 2:
+            # Sort claims by crag_score/rerank_score
+            sorted_claims = sorted(claims, key=lambda c: c.get("crag_score", c.get("score", 0.0)), reverse=True)
+            reordered = [None] * len(sorted_claims)
+            
+            left = 0
+            right = len(sorted_claims) - 1
+            for idx, item in enumerate(sorted_claims):
+                if idx % 2 == 0:
+                    reordered[left] = item
+                    left += 1
+                else:
+                    reordered[right] = item
+                    right -= 1
+            grp["claims"] = [c for c in reordered if c is not None]
+
+    logger.info("Synthesizer Agent: formed %d candidate claim groups with Lost-in-Middle reordering", len(candidate_groups))
     return candidate_groups

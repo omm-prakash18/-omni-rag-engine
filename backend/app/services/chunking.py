@@ -177,13 +177,28 @@ def chunk_article(
         texts = _simple_split(raw_text)
 
     chunks: List[ChunkMetadata] = []
+    
+    # Contextual Prefixing to carry standalone metadata without neighbor dependence
+    meta_prefix_parts = []
+    if source_name:
+        meta_prefix_parts.append(f"Source: {source_name}")
+    if title:
+        meta_prefix_parts.append(f"Title: {title}")
+    if published_at:
+        meta_prefix_parts.append(f"Date: {published_at.strftime('%Y-%m-%d') if hasattr(published_at, 'strftime') else str(published_at)}")
+    
+    context_prefix = f"[{' | '.join(meta_prefix_parts)}] " if meta_prefix_parts else ""
+
     for text in texts:
         if len(text.strip()) < 50:  # skip very short fragments
             continue
+            
+        full_context_text = context_prefix + text.strip() if not text.strip().startswith("[Source:") else text.strip()
+
         chunks.append(
             ChunkMetadata(
                 chunk_id=str(uuid.uuid4()),
-                raw_text=text.strip(),
+                raw_text=full_context_text,
                 author=author,
                 title=title,
                 url=url,
