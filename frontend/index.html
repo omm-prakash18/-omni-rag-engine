@@ -4,703 +4,275 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Omni-Perspective Engine — See Where The News Disagrees</title>
-  <meta name="description" content="Real-time multi-source contradiction detection. See where Bloomberg, Reuters, and the WSJ disagree — and why. Powered by LangGraph, Qdrant, and Gemini." />
+  <meta name="description" content="Real-time multi-source contradiction detection. See where news sources disagree — and why. Powered by CRAG, LangGraph, Qdrant, and Gemini." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
-  <!-- ── TECH FRAME CONTAINER ── -->
-  <div class="page-frame">
-    <span class="corner-cross top-left">+</span>
-    <span class="corner-cross top-right">+</span>
-    <span class="corner-cross bottom-left">+</span>
-    <span class="corner-cross bottom-right">+</span>
-
-    <!-- ── NAV ── -->
-    <nav class="nav" id="nav">
-      <div class="nav-inner">
-        <a href="#" class="nav-logo">
-          <span class="logo-icon">◈</span>
-          <span class="logo-text">omni<span class="logo-accent">·</span>engine</span>
-        </a>
-        <ul class="nav-links">
-          <li><a href="#pipeline">How It Works</a></li>
-          <li><a href="#databases">Architecture</a></li>
-          <li><a href="#phases">Roadmap</a></li>
-          <li><a href="#build-order">Build Order</a></li>
-        </ul>
-        <div class="nav-actions">
-          <a href="#live-results-section" class="nav-btn-dark" onclick="showLiveDemo(event)">Try Live Demo</a>
-          <a href="#phases" class="nav-btn-outline">Docs</a>
-        </div>
-      </div>
-    </nav>
-
-    <!-- ── HERO SHOWCASE ── -->
-    <section class="hero-showcase-container" id="hero">
-      <div class="hero-canvas" id="heroCanvas"></div>
-
-      <!-- Circular Action Ring Widget -->
-      <button class="showcase-ring-btn" id="showcaseRingBtn" type="button"
-              title="Jump to live analysis"
-              onclick="showLiveDemo(event)">
-        <span class="ring-outer"></span>
-        <span class="ring-inner">◈</span>
-        <span class="ring-pulse-dot"></span>
-      </button>
-
-      <!-- LEFT: Hero Copy + Search -->
-      <div class="hero-content showcase-content">
-        <div class="showcase-emblem">
-          <div class="emblem-sword-icon">⚔️</div>
-          <div class="emblem-title">
-            <span class="emblem-top">MULTI-SOURCE INTELLIGENCE</span>
-            <h1 class="hero-title emblem-main">
-              SEE WHERE THE<br/>
-              <span class="hero-title-italic">news disagrees.</span>
-            </h1>
-            <span class="emblem-sub">CONTRADICTION DETECTION · 4-AGENT PIPELINE · REAL-TIME</span>
-          </div>
-        </div>
-
-        <p class="hero-subtitle">
-          Bloomberg says 3.2%. Reuters says 3.9%. The WSJ says something else.<br/>
-          <strong style="color:var(--cream)">Omni finds the gap — and tells you exactly why.</strong>
-        </p>
-
-        <div class="hero-stats">
-          <div class="stat">
-            <span class="stat-num">4</span>
-            <span class="stat-label">Agent nodes</span>
-          </div>
-          <div class="stat-divider"></div>
-          <div class="stat">
-            <span class="stat-num">6+</span>
-            <span class="stat-label">Live sources</span>
-          </div>
-          <div class="stat-divider"></div>
-          <div class="stat">
-            <span class="stat-num">4-way</span>
-            <span class="stat-label">Contradiction taxonomy</span>
-          </div>
-        </div>
-
-        <!-- Interactive Query Search Box -->
-        <form class="hero-search-form" id="queryForm" onsubmit="handleQuerySubmit(event)">
-          <div class="search-input-wrap">
-            <span class="search-icon">🔍</span>
-            <input type="text" id="queryInput"
-                   placeholder="e.g. What's the inflation outlook for 2026?"
-                   value="What's the inflation outlook for 2026?"
-                   required autocomplete="off" />
-            <button type="submit" class="search-btn" id="searchBtn">
-              <span id="searchBtnText">Analyze</span>
-              <span class="btn-spinner" id="btnSpinner" style="display:none;">⏳</span>
-            </button>
-          </div>
-
-          <!-- Stage Progress Bar (shown during query) -->
-          <div class="stage-progress-wrap" id="stageProgressWrap">
-            <div class="stage-steps" id="stageSteps">
-              <div class="stage-step" id="stage-1" title="Reading sources from vector store">📡 Reading sources</div>
-              <div class="stage-step" id="stage-2" title="Evaluating retrieval quality">🔎 Evaluating chunks</div>
-              <div class="stage-step" id="stage-3" title="Mapping entity graph">🗺 Mapping entities</div>
-              <div class="stage-step" id="stage-4" title="Grouping claims by entity">⚙ Grouping claims</div>
-              <div class="stage-step" id="stage-5" title="Checking for disagreements">⚡ Checking conflicts</div>
-            </div>
-          </div>
-
-          <!-- Preset Prompt Badges -->
-          <div class="query-presets">
-            <span class="preset-label">Try:</span>
-            <button type="button" class="preset-chip" onclick="setPresetQuery('US CPI inflation May 2024 rate')">US Inflation May 2024</button>
-            <button type="button" class="preset-chip" onclick="setPresetQuery('Federal Reserve benchmark interest rate')">Fed Benchmark Rate</button>
-            <button type="button" class="preset-chip" onclick="setPresetQuery('US GDP growth Q1 2024 vs Q4 2023')">US GDP Growth</button>
-            <button type="button" class="preset-chip" onclick="setPresetQuery('Core PCE vs Headline CPI rate')">Core PCE vs CPI</button>
-          </div>
-        </form>
-      </div>
-
-      <!-- RIGHT: Live Hero Demo Canvas -->
-      <div class="hero-graph-preview" style="position:relative;z-index:2;">
-        <div class="hero-live-demo" id="heroDemoCanvas">
-          <span class="hero-demo-label">LIVE CONTRADICTION DEMO — CLICK A NODE</span>
-        </div>
-        <div class="floating-badge-group">
-          <span class="float-badge">⚡ Real-Time Contradiction Scoring</span>
-          <div class="float-subgroup">
-            <span class="float-badge">🔗 Multi-Source Attribution</span>
-            <span class="float-badge">📊 4-Way Taxonomy</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Bottom Segmented Tab Bar -->
-      <div class="showcase-tabs-bar">
-        <div class="showcase-tab-item active" onclick="switchShowcaseTab(this, '#hero')">
-          <span class="tab-num">01</span>
-          <span class="tab-title">Contradiction Engine</span>
-        </div>
-        <div class="showcase-tab-item" onclick="switchShowcaseTab(this, '#pipeline')">
-          <span class="tab-num">02</span>
-          <span class="tab-title">Knowledge Graph</span>
-        </div>
-        <div class="showcase-tab-item" onclick="switchShowcaseTab(this, '#databases')">
-          <span class="tab-num">03</span>
-          <span class="tab-title">Database Layer</span>
-        </div>
-        <div class="showcase-tab-item" onclick="switchShowcaseTab(this, '#frontend')">
-          <span class="tab-num">04</span>
-          <span class="tab-title">Design System</span>
-        </div>
-        <div class="showcase-tab-item" onclick="switchShowcaseTab(this, '#phases')">
-          <span class="tab-num">05</span>
-          <span class="tab-title">Phased Roadmap</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── BRAND TICKER BAR ── -->
-    <div class="brand-ticker-bar">
-      <div class="brand-ticker-inner">
-        <span class="ticker-highlight">SOURCES MONITORED</span>
-        <span class="ticker-dot">•</span>
-        <span class="ticker-logo">Reuters</span>
-        <span class="ticker-dot">•</span>
-        <span class="ticker-logo">Bloomberg</span>
-        <span class="ticker-dot">•</span>
-        <span class="ticker-logo">Wall Street Journal</span>
-        <span class="ticker-dot">•</span>
-        <span class="ticker-logo">Financial Times</span>
-        <span class="ticker-dot">•</span>
-        <span class="ticker-logo">Associated Press</span>
-        <span class="ticker-dot">•</span>
-        <span class="ticker-logo">CNBC</span>
-        <span class="ticker-dot">•</span>
-        <span class="ticker-logo" style="color:var(--gold);">+ More via NewsAPI</span>
+  <!-- ── NAV ── -->
+  <nav class="nav" id="nav">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <span class="logo-icon">◈</span>
+        <span class="logo-text">omni<span class="logo-accent">·</span>engine</span>
+      </a>
+      <div class="nav-actions">
+        <a href="#live-results-section" class="nav-btn-dark" onclick="showLiveDemo(event)">Try Demo</a>
+        <a href="https://github.com/omm-prakash18/-omni-rag-engine" target="_blank" rel="noopener" class="nav-btn-outline">GitHub</a>
       </div>
     </div>
+  </nav>
 
-    <!-- ── LIVE RESULTS PANEL ── -->
-    <section class="section section-dark" id="live-results-section" style="display:none;">
-      <div class="container">
-        <div class="section-header" style="text-align:left; margin-bottom:2rem;">
-          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
-            <div>
-              <span class="section-eyebrow">Real-Time Pipeline Result</span>
-              <h2 class="section-title" id="resultsQueryTitle" style="font-size:1.8rem;">Analysis Ready</h2>
-            </div>
-            <div class="ws-badge-live" id="wsStatusBadge">
-              <span class="ws-dot"></span>
-              <span id="wsStatusText">CONNECTING…</span>
-            </div>
-          </div>
-          <p class="section-desc" id="resultsSummary" style="text-align:left; margin:0.5rem 0 0;">
-            4-Node LangGraph Pipeline: Vector Agent → CRAG → Synthesizer → Classifier
-          </p>
-        </div>
+  <!-- ── HERO ── -->
+  <section class="hero-showcase-container" id="hero">
+    <div class="hero-canvas" id="heroCanvas"></div>
 
-        <!-- Agent Reasoning Trace -->
-        <div class="agent-trace-box" id="agentTraceBox">
-          <div class="trace-header">
-            ⚡ LangGraph Agent Reasoning Trace
-            <span class="trace-status-pill" id="traceStatusPill" style="float:right;font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:12px;background:rgba(200,169,107,0.12);color:var(--gold);border:1px solid rgba(200,169,107,0.25);">Idle</span>
-          </div>
-          <div class="trace-steps" id="traceSteps"></div>
-        </div>
-
-        <!-- Temporal Range Slider -->
-        <div class="temporal-slider-card">
-          <div class="temporal-header">
-            <div class="temporal-label">
-              <span class="calendar-icon">📅</span>
-              <span>Temporal Range Scrub</span>
-            </div>
-            <span class="date-display-badge" id="temporalDateBadge">Full Range</span>
-          </div>
-          <div class="temporal-range-wrap">
-            <input type="range" class="temporal-slider-bar" id="temporalSlider"
-                   min="0" max="100" value="100"
-                   oninput="handleTemporalSlide(this.value)" />
-            <div class="temporal-ticks">
-              <span onclick="setTemporalPreset(20)">Early (May 15)</span>
-              <span onclick="setTemporalPreset(50)">Mid (May 16)</span>
-              <span onclick="setTemporalPreset(100)">Full Range (May 17)</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Graph Visualizer -->
-        <div class="graph-surface-card">
-          <div class="graph-toolbar">
-            <div class="graph-legend">
-              <div class="legend-item"><span class="legend-dot entity"></span>Entity Node</div>
-              <div class="legend-item"><span class="legend-dot source"></span>Source Node</div>
-              <div class="legend-item"><span class="legend-line-contra"></span>Contradiction Edge</div>
-            </div>
-            <div class="graph-controls-group">
-              <button type="button" class="graph-ctrl-btn" onclick="zoomGraph(1.2)" title="Zoom In">🔍+</button>
-              <button type="button" class="graph-ctrl-btn" onclick="zoomGraph(0.8)" title="Zoom Out">🔍-</button>
-              <button type="button" class="graph-ctrl-btn" onclick="resetGraphView()" title="Reset">↺ Reset</button>
-              <button type="button" class="graph-ctrl-btn cluster-btn" id="clusterToggleBtn"
-                      onclick="toggleClusterNodes()">❖ Cluster</button>
-            </div>
-          </div>
-
-          <!-- Skeleton Loading Placeholder -->
-          <div class="skeleton-graph-wrap" id="skeletonGraph">
-            <div class="skeleton skeleton-node" style="width:120px;left:38%;top:42%;"></div>
-            <div class="skeleton skeleton-node" style="width:100px;left:18%;top:28%;"></div>
-            <div class="skeleton skeleton-node" style="width:100px;left:62%;top:28%;"></div>
-            <div class="skeleton skeleton-node" style="width:90px; left:15%;top:60%;"></div>
-            <div class="skeleton skeleton-node" style="width:90px; left:65%;top:60%;"></div>
-            <div class="skeleton skeleton-node" style="width:80px; left:42%;top:18%;"></div>
-          </div>
-
-          <div class="react-flow-visualizer" id="interactiveGraphCanvas">
-            <!-- Rendered dynamically by JS -->
-          </div>
-        </div>
-
-        <!-- Contradictions List -->
-        <div style="margin-top:2rem;">
-          <h3 style="font-family:var(--font-headline);font-size:1.4rem;font-weight:800;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:1.5rem;color:var(--text-primary);">
-            Detected Contradictions
-            <span style="font-family:var(--font-mono);font-size:0.75rem;font-weight:400;color:var(--text-muted);margin-left:0.75rem;">Click any card to trace sources</span>
-          </h3>
-          <div class="live-contradictions" id="liveContradictionsList"></div>
+    <div class="hero-content showcase-content">
+      <div class="showcase-emblem">
+        <div class="emblem-title">
+          <span class="emblem-top">MULTI-SOURCE INTELLIGENCE</span>
+          <h1 class="hero-title emblem-main">
+            SEE WHERE THE<br/>
+            <span class="hero-title-italic">news disagrees.</span>
+          </h1>
+          <span class="emblem-sub">CRAG · LANGGRAPH · QDRANT · GEMINI</span>
         </div>
       </div>
-    </section>
 
-    <!-- ── SOURCE-TRACING SPLIT VIEW MODAL ── -->
-    <div class="split-modal-overlay" id="splitViewModal" style="display:none;"
-         onclick="if(event.target===this) closeSplitViewModal()">
-      <div class="split-modal-container">
-        <div class="split-modal-header">
+      <p class="hero-subtitle">
+        Bloomberg says 3.2%. Reuters says 3.9%. The WSJ says something else.<br/>
+        <strong style="color:var(--cream)">Omni finds the gap — and tells you exactly why.</strong>
+      </p>
+
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="stat-num">5</span>
+          <span class="stat-label">Agent nodes</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-num">6+</span>
+          <span class="stat-label">Live sources</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-num">4-way</span>
+          <span class="stat-label">Contradiction taxonomy</span>
+        </div>
+      </div>
+
+      <!-- Query Form -->
+      <form class="hero-search-form" id="queryForm" onsubmit="handleQuerySubmit(event)">
+        <div class="search-input-wrap">
+          <span class="search-icon">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <input type="text" id="queryInput"
+                 placeholder="e.g. What's the inflation outlook for 2026?"
+                 value="What's the inflation outlook for 2026?"
+                 required autocomplete="off" />
+          <button type="submit" class="search-btn" id="searchBtn">
+            <span id="searchBtnText">Analyze</span>
+            <span class="btn-spinner" id="btnSpinner" style="display:none;">⏳</span>
+          </button>
+        </div>
+
+        <!-- Stage Progress -->
+        <div class="stage-progress-wrap" id="stageProgressWrap">
+          <div class="stage-steps" id="stageSteps">
+            <div class="stage-step" id="stage-1">📡 Reading sources</div>
+            <div class="stage-step" id="stage-2">🔎 CRAG evaluation</div>
+            <div class="stage-step" id="stage-3">🗺 Mapping entities</div>
+            <div class="stage-step" id="stage-4">⚙ Grouping claims</div>
+            <div class="stage-step" id="stage-5">⚡ Classifying conflicts</div>
+          </div>
+        </div>
+
+        <!-- Preset chips -->
+        <div class="query-presets">
+          <span class="preset-label">Try:</span>
+          <button type="button" class="preset-chip" onclick="setPresetQuery('US CPI inflation May 2024 rate')">US Inflation May 2024</button>
+          <button type="button" class="preset-chip" onclick="setPresetQuery('Federal Reserve benchmark interest rate')">Fed Benchmark Rate</button>
+          <button type="button" class="preset-chip" onclick="setPresetQuery('US GDP growth Q1 2024 vs Q4 2023')">US GDP Growth</button>
+          <button type="button" class="preset-chip" onclick="setPresetQuery('Core PCE vs Headline CPI rate')">Core PCE vs CPI</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Hero animated demo canvas -->
+    <div class="hero-graph-preview" style="position:relative;z-index:2;">
+      <div class="hero-live-demo" id="heroDemoCanvas">
+        <span class="hero-demo-label">LIVE CONTRADICTION DEMO</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── SOURCE TICKER ── -->
+  <div class="brand-ticker-bar">
+    <div class="brand-ticker-inner">
+      <span class="ticker-highlight">SOURCES MONITORED</span>
+      <span class="ticker-dot">•</span>
+      <span class="ticker-logo">Reuters</span>
+      <span class="ticker-dot">•</span>
+      <span class="ticker-logo">Bloomberg</span>
+      <span class="ticker-dot">•</span>
+      <span class="ticker-logo">Wall Street Journal</span>
+      <span class="ticker-dot">•</span>
+      <span class="ticker-logo">Financial Times</span>
+      <span class="ticker-dot">•</span>
+      <span class="ticker-logo">Associated Press</span>
+      <span class="ticker-dot">•</span>
+      <span class="ticker-logo">CNBC</span>
+      <span class="ticker-dot">•</span>
+      <span class="ticker-logo" style="color:var(--gold);">+ More via NewsAPI</span>
+    </div>
+  </div>
+
+  <!-- ── LIVE RESULTS SECTION ── -->
+  <section class="section section-dark" id="live-results-section" style="display:none;">
+    <div class="container">
+      <div class="section-header" style="text-align:left; margin-bottom:2rem;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
           <div>
-            <div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--gold);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.25rem;">
-              Source Attribution · Side-by-Side
-            </div>
-            <div class="split-modal-title" id="splitModalEntity">Contradiction Diagnosis</div>
+            <span class="section-eyebrow">Real-Time Pipeline Result</span>
+            <h2 class="section-title" id="resultsQueryTitle" style="font-size:1.8rem;">Analysis Ready</h2>
           </div>
-          <button class="close-modal-btn" onclick="closeSplitViewModal()">✕</button>
+          <div class="ws-badge-live" id="wsStatusBadge">
+            <span class="ws-dot"></span>
+            <span id="wsStatusText">CONNECTING…</span>
+          </div>
+        </div>
+        <p class="section-desc" id="resultsSummary" style="text-align:left; margin:0.5rem 0 0;">
+          5-Node LangGraph Pipeline: Vector Agent → CRAG → Graph Agent → Synthesizer → Classifier
+        </p>
+      </div>
+
+      <!-- Agent Reasoning Trace -->
+      <div class="agent-trace-box" id="agentTraceBox">
+        <div class="trace-header">
+          ⚡ LangGraph Agent Trace
+          <span class="trace-status-pill" id="traceStatusPill" style="float:right;font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:12px;background:rgba(200,169,107,0.12);color:var(--gold);border:1px solid rgba(200,169,107,0.25);">Idle</span>
+        </div>
+        <div class="trace-steps" id="traceSteps"></div>
+      </div>
+
+      <!-- Temporal Slider -->
+      <div class="temporal-slider-card">
+        <div class="temporal-header">
+          <div class="temporal-label">
+            <span class="calendar-icon">📅</span>
+            <span>Timeline Filter</span>
+          </div>
+          <span class="date-display-badge" id="temporalDateBadge">Full Range</span>
+        </div>
+        <div class="temporal-range-wrap">
+          <input type="range" class="temporal-slider-bar" id="temporalSlider"
+                 min="0" max="100" value="100"
+                 oninput="handleTemporalSlide(this.value)" />
+          <div class="temporal-ticks">
+            <span onclick="setTemporalPreset(20)">Early (May 15)</span>
+            <span onclick="setTemporalPreset(50)">Mid (May 16)</span>
+            <span onclick="setTemporalPreset(100)">Full Range</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Graph Visualizer -->
+      <div class="graph-surface-card">
+        <div class="graph-toolbar">
+          <div class="graph-legend">
+            <div class="legend-item"><span class="legend-dot entity"></span>Entity Node</div>
+            <div class="legend-item"><span class="legend-dot source"></span>Source Node</div>
+            <div class="legend-item"><span class="legend-line-contra"></span>Conflict Edge</div>
+          </div>
+          <div class="graph-controls-group">
+            <button type="button" class="graph-ctrl-btn" onclick="zoomGraph(1.2)" title="Zoom In">+</button>
+            <button type="button" class="graph-ctrl-btn" onclick="zoomGraph(0.8)" title="Zoom Out">−</button>
+            <button type="button" class="graph-ctrl-btn" onclick="resetGraphView()" title="Reset">↺</button>
+            <button type="button" class="graph-ctrl-btn cluster-btn" id="clusterToggleBtn" onclick="toggleClusterNodes()">Cluster</button>
+          </div>
         </div>
 
-        <div style="background:var(--bg-2);padding:1rem 1.25rem;border-radius:var(--radius-sm);border-left:3px solid var(--gold);margin-bottom:1.25rem;">
-          <div style="font-family:var(--font-headline);font-size:1.05rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;" id="splitModalType">
-            CLASSIFICATION TYPE
-          </div>
-          <!-- Confidence bar in modal -->
-          <div class="confidence-wrap" id="splitModalConfidence" style="margin-top:0.5rem;">
-            <span class="confidence-label">Confidence</span>
-            <div class="confidence-bar-track">
-              <div class="confidence-bar-fill" id="splitModalConfBar" style="width:0%;"></div>
-            </div>
-            <span class="confidence-pct" id="splitModalConfPct">—</span>
-          </div>
-          <p style="font-size:0.88rem;color:var(--text-secondary);margin-top:0.5rem;line-height:1.6;" id="splitModalReason">
-            Classifier explanation will appear here.
-          </p>
-          <!-- Why-not-a-contradiction box (shown for scope/methodology) -->
-          <div class="why-not-box" id="splitWhyNotBox" style="display:none;">
-            <div class="why-not-label">ℹ Why this isn't a true contradiction</div>
-            <div class="why-not-text" id="splitWhyNotText"></div>
-          </div>
+        <!-- Skeleton -->
+        <div class="skeleton-graph-wrap" id="skeletonGraph">
+          <div class="skeleton skeleton-node" style="width:120px;left:38%;top:42%;"></div>
+          <div class="skeleton skeleton-node" style="width:100px;left:18%;top:28%;"></div>
+          <div class="skeleton skeleton-node" style="width:100px;left:62%;top:28%;"></div>
+          <div class="skeleton skeleton-node" style="width:90px; left:15%;top:60%;"></div>
+          <div class="skeleton skeleton-node" style="width:90px; left:65%;top:60%;"></div>
         </div>
 
-        <div class="split-view-grid" id="splitModalBody">
-          <!-- Rendered dynamically -->
-        </div>
+        <div class="react-flow-visualizer" id="interactiveGraphCanvas"></div>
+      </div>
+
+      <!-- Contradiction Cards -->
+      <div style="margin-top:2rem;">
+        <h3 style="font-family:var(--font-headline);font-size:1.4rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:1.5rem;color:var(--text-primary);">
+          Detected Contradictions
+          <span style="font-family:var(--font-mono);font-size:0.75rem;font-weight:400;color:var(--text-muted);margin-left:0.75rem;">Click any card to trace sources</span>
+        </h3>
+        <div class="live-contradictions" id="liveContradictionsList"></div>
       </div>
     </div>
+  </section>
 
-    <!-- ── PHILOSOPHY ── -->
-    <section class="philosophy">
-      <div class="container">
-        <div class="phil-card">
-          <div class="phil-icon">⚠</div>
-          <div class="phil-text">
-            <h2>Design Philosophy: Phase Before You Scale</h2>
-            <p>The original concept jumps straight to Kafka + dual-DB + multi-agent CRAG + live WebSockets.
-            That's a production architecture for a problem — contradiction detection quality — that hasn't
-            been validated yet. <strong>Do not let an agent skip straight to Phase 2's infra. The infra is the easy part.</strong></p>
+  <!-- ── SOURCE-TRACING SPLIT VIEW MODAL ── -->
+  <div class="split-modal-overlay" id="splitViewModal" style="display:none;"
+       onclick="if(event.target===this) closeSplitViewModal()">
+    <div class="split-modal-container">
+      <div class="split-modal-header">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--gold);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.25rem;">
+            Source Attribution · Side-by-Side
           </div>
+          <div class="split-modal-title" id="splitModalEntity">Contradiction Diagnosis</div>
+        </div>
+        <button class="close-modal-btn" onclick="closeSplitViewModal()">✕</button>
+      </div>
+
+      <div style="background:var(--bg-2);padding:1rem 1.25rem;border-radius:var(--radius-sm);border-left:3px solid var(--gold);margin-bottom:1.25rem;">
+        <div style="font-family:var(--font-headline);font-size:1.05rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;" id="splitModalType">
+          CLASSIFICATION TYPE
+        </div>
+        <div class="confidence-wrap" id="splitModalConfidence" style="margin-top:0.5rem;">
+          <span class="confidence-label">Confidence</span>
+          <div class="confidence-bar-track">
+            <div class="confidence-bar-fill" id="splitModalConfBar" style="width:0%;"></div>
+          </div>
+          <span class="confidence-pct" id="splitModalConfPct">—</span>
+        </div>
+        <p style="font-size:0.88rem;color:var(--text-secondary);margin-top:0.5rem;line-height:1.6;" id="splitModalReason">
+          Classifier explanation will appear here.
+        </p>
+        <div class="why-not-box" id="splitWhyNotBox" style="display:none;">
+          <div class="why-not-label">ℹ Why this isn't a true contradiction</div>
+          <div class="why-not-text" id="splitWhyNotText"></div>
         </div>
       </div>
-    </section>
 
-    <!-- ── PHASES ── -->
-    <section class="section" id="phases">
-      <div class="container">
-        <div class="section-header">
-          <span class="section-eyebrow">Roadmap</span>
-          <h2 class="section-title">Two-Phase Delivery</h2>
-        </div>
-        <div class="phases-grid">
-          <div class="phase-card phase-active">
-            <div class="phase-header">
-              <span class="phase-badge">Phase 1 — Active</span>
-              <span class="phase-time">~2–3 Weeks</span>
-            </div>
-            <h3 class="phase-title">MVP — Validate the Hard Problem</h3>
-            <p class="phase-desc">Batch ingestion, single synthesis pass, static graph render. Prove the LLM can reliably distinguish real contradictions from scope/methodology mismatches.</p>
-            <ul class="phase-features">
-              <li><span class="check">✓</span> Polling-based ingestion (APScheduler)</li>
-              <li><span class="check">✓</span> Semantic chunking + metadata extraction</li>
-              <li><span class="check">✓</span> LangGraph 4-node pipeline</li>
-              <li><span class="check">✓</span> FastAPI REST + WebSocket endpoint</li>
-              <li><span class="check">✓</span> Confidence indicator per contradiction</li>
-              <li><span class="check">✓</span> Source-tracing split view panel</li>
-              <li><span class="check">✓</span> Temporal slider (client-side)</li>
-            </ul>
-            <div class="phase-target">
-              <span class="target-label">Gate to Phase 2:</span>
-              <span class="target-value">&gt;85% classifier precision on eval set</span>
-            </div>
-          </div>
+      <div class="split-view-grid" id="splitModalBody"></div>
+    </div>
+  </div>
 
-          <div class="phase-card phase-future">
-            <div class="phase-header">
-              <span class="phase-badge phase-badge-dim">Phase 2 — Locked</span>
-              <span class="phase-time">After Gate</span>
-            </div>
-            <h3 class="phase-title">Production — Scale the Infra</h3>
-            <p class="phase-desc">Add streaming ingestion and live UI only once Phase 1 precision is measured and acceptable. The infra is the easy part — don't skip the hard part.</p>
-            <ul class="phase-features">
-              <li><span class="check check-dim">→</span> Kafka producers per source category</li>
-              <li><span class="check check-dim">→</span> WebSocket live streaming gateway</li>
-              <li><span class="check check-dim">→</span> Live agent reasoning panel</li>
-              <li><span class="check check-dim">→</span> Saved queries / watchlist alerts</li>
-              <li><span class="check check-dim">→</span> Export/share analysis (PDF / link)</li>
-              <li><span class="check check-dim">→</span> Multi-language source support</li>
-            </ul>
-            <div class="phase-target phase-target-dim">
-              <span class="target-label">Unlocked by:</span>
-              <span class="target-value">Phase 1 eval harness passing</span>
-            </div>
-          </div>
+  <!-- ── FOOTER ── -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <span class="logo-icon">◈</span>
+          <span class="logo-text">Omni<span class="logo-accent">·</span>Perspective Engine</span>
         </div>
+        <p class="footer-note">CRAG + LangGraph + Qdrant + Gemini · <code>localhost:8000</code></p>
+        <p class="footer-note" style="opacity:0.4;">Inter · JetBrains Mono · MIT License</p>
       </div>
-    </section>
-
-    <!-- ── ARCHITECTURE ── -->
-    <section class="section section-dark" id="architecture">
-      <div class="container">
-        <div class="section-header">
-          <span class="section-eyebrow">System Design</span>
-          <h2 class="section-title">Full Stack Architecture</h2>
-        </div>
-        <div class="arch-diagram" id="archDiagram">
-          <!-- Drawn by JS -->
-        </div>
-      </div>
-    </section>
-
-    <!-- ── PIPELINE ── -->
-    <section class="section" id="pipeline">
-      <div class="container">
-        <div class="section-header">
-          <span class="section-eyebrow">LangGraph Orchestration</span>
-          <h2 class="section-title">Query-Time Agent Pipeline</h2>
-          <p class="section-desc">Four nodes, not more, for Phase 1. Each node is a distinct LLM call with a well-scoped job.</p>
-        </div>
-        <div class="pipeline-flow">
-          <div class="pipeline-node" data-index="0">
-            <div class="node-icon" style="--accent:#6E8B6A; background:rgba(110,139,106,0.15); border:1px solid rgba(110,139,106,0.3);">⊕</div>
-            <div class="node-body">
-              <h4 class="node-title">Vector Agent</h4>
-              <p class="node-desc">Semantic search in Qdrant for chunks relevant to the query. Returns top-k scored chunks with metadata.</p>
-              <div class="node-tags">
-                <span class="tag">Qdrant</span><span class="tag">Embeddings</span><span class="tag">MMR</span>
-              </div>
-            </div>
-          </div>
-          <div class="pipeline-arrow">→</div>
-          <div class="pipeline-node" data-index="1">
-            <div class="node-icon" style="--accent:#A8C2A8; background:rgba(168,194,168,0.12); border:1px solid rgba(168,194,168,0.3);">◉</div>
-            <div class="node-body">
-              <h4 class="node-title">CRAG Agent</h4>
-              <p class="node-desc">Evaluates retrieval quality. Corrects and refines low-confidence chunks before synthesis. Decides PASS/CORRECT/REJECT.</p>
-              <div class="node-tags">
-                <span class="tag">CRAG</span><span class="tag">Quality</span><span class="tag">Gemini</span>
-              </div>
-            </div>
-          </div>
-          <div class="pipeline-arrow">→</div>
-          <div class="pipeline-node" data-index="2">
-            <div class="node-icon" style="--accent:#C8A96B; background:rgba(200,169,107,0.12); border:1px solid rgba(200,169,107,0.3);">⊞</div>
-            <div class="node-body">
-              <h4 class="node-title">Synthesizer Agent</h4>
-              <p class="node-desc">Merges vector + graph results. Groups claims by entity × metric. Prepares contradiction candidates.</p>
-              <div class="node-tags">
-                <span class="tag">Merge</span><span class="tag">Grouping</span><span class="tag">LLM</span>
-              </div>
-            </div>
-          </div>
-          <div class="pipeline-arrow">→</div>
-          <div class="pipeline-node node-highlight" data-index="3">
-            <div class="node-icon" style="--accent:#C87A6A; background:rgba(200,122,106,0.12); border:1px solid rgba(200,122,106,0.3);">⚡</div>
-            <div class="node-body">
-              <h4 class="node-title">Contradiction Classifier</h4>
-              <p class="node-desc">The core IP. For each claim group with differing values, assigns one of four contradiction types with confidence score.</p>
-              <div class="node-tags">
-                <span class="tag tag-red">Core IP</span><span class="tag">Eval Required</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Contradiction Taxonomy -->
-        <div class="taxonomy">
-          <h3 class="taxonomy-title">Contradiction Taxonomy (4-Way)</h3>
-          <div class="taxonomy-grid">
-            <div class="taxon taxon-red">
-              <span class="taxon-code">direct_contradiction</span>
-              <p>Same entity · same metric · same scope · different value. The real deal. Highest severity.</p>
-            </div>
-            <div class="taxon taxon-yellow">
-              <span class="taxon-code">stale</span>
-              <p>One claim's <code>published_at</code> is much older — likely superseded, not actually conflicting.</p>
-            </div>
-            <div class="taxon taxon-blue">
-              <span class="taxon-code">scope_mismatch</span>
-              <p>Different date range, geography, or population. Not a real conflict — different questions entirely.</p>
-            </div>
-            <div class="taxon taxon-purple">
-              <span class="taxon-code">methodology_mismatch</span>
-              <p>Explicitly different calculation method (CPI vs PCE, core vs headline). Disagrees on method, not facts.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── DATABASES ── -->
-    <section class="section section-dark" id="databases">
-      <div class="container">
-        <div class="section-header">
-          <span class="section-eyebrow">Data Layer</span>
-          <h2 class="section-title">Database Architecture</h2>
-          <p class="section-desc">Single write path (SQLite event log) as source of truth. Qdrant and Neo4j are derived stores.</p>
-        </div>
-        <div class="db-grid">
-          <div class="db-card">
-            <div class="db-header">
-              <div class="db-icon db-postgres">SQ</div>
-              <div><h4>SQLite / Postgres</h4><span class="db-role">Source of Truth</span></div>
-            </div>
-            <p class="db-desc">Event log — single write path both stores derive from. Transactional writes, nightly consistency reconciliation for orphan detection.</p>
-            <div class="db-schema">
-              <span class="schema-key">chunk_id</span><span class="schema-val">uuid</span>
-              <span class="schema-key">source_id</span><span class="schema-val">string</span>
-              <span class="schema-key">published_at</span><span class="schema-val">ISO8601</span>
-              <span class="schema-key">status</span><span class="schema-val">active|retracted|superseded</span>
-            </div>
-          </div>
-          <div class="db-card">
-            <div class="db-header">
-              <div class="db-icon db-qdrant">QD</div>
-              <div><h4>Qdrant</h4><span class="db-role">Vector Store</span></div>
-            </div>
-            <p class="db-desc">Chunk embeddings with full metadata payload for filtering. In-memory fallback when Qdrant client unavailable.</p>
-            <div class="db-schema">
-              <span class="schema-key">vector</span><span class="schema-val">float[] (768d)</span>
-              <span class="schema-key">payload</span><span class="schema-val">chunk metadata</span>
-              <span class="schema-key">filter</span><span class="schema-val">source, date, geo</span>
-            </div>
-          </div>
-          <div class="db-card">
-            <div class="db-header">
-              <div class="db-icon db-neo4j">N4J</div>
-              <div><h4>Neo4j</h4><span class="db-role">Graph Store</span></div>
-            </div>
-            <p class="db-desc">Entity/relationship graph. Nodes: Entity, Claim, Source. Edges: CLAIMS, CONTRADICTS, SUPERSEDES — queried via Cypher at query-time.</p>
-            <div class="db-schema">
-              <span class="schema-key">Entity</span><span class="schema-val">normalized IDs</span>
-              <span class="schema-key">Claim</span><span class="schema-val">scoped to chunk</span>
-              <span class="schema-key">CONTRADICTS</span><span class="schema-val">edge + reason</span>
-            </div>
-          </div>
-          <div class="db-card">
-            <div class="db-header">
-              <div class="db-icon db-redis">RD</div>
-              <div><h4>Redis</h4><span class="db-role">Queue + Cache</span></div>
-            </div>
-            <p class="db-desc">Phase 1 job queue for ingestion rate-limiting. Query result caching for repeated questions. Phase 2: replaced by Kafka.</p>
-            <div class="db-schema">
-              <span class="schema-key">job_queue</span><span class="schema-val">list</span>
-              <span class="schema-key">query_cache</span><span class="schema-val">hash, TTL 30min</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="write-path">
-          <h3 class="write-path-title">Transactional Write Path</h3>
-          <div class="write-path-flow">
-            <div class="wp-step">Ingestion<br/><small>APScheduler</small></div>
-            <div class="wp-arrow">→</div>
-            <div class="wp-step wp-step-primary">SQLite<br/><small>event log written first</small></div>
-            <div class="wp-arrow">→</div>
-            <div class="wp-fork">
-              <div class="wp-step">Qdrant<br/><small>point upsert</small></div>
-              <div class="wp-step">Neo4j<br/><small>node + edge write</small></div>
-            </div>
-            <div class="wp-arrow">→</div>
-            <div class="wp-step">Nightly<br/>Reconciler</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── FRONTEND ── -->
-    <section class="section" id="frontend">
-      <div class="container">
-        <div class="section-header">
-          <span class="section-eyebrow">UI / UX System</span>
-          <h2 class="section-title">Frontend Design System</h2>
-          <p class="section-desc">Editorial, newsroom feel. Not a generic AI app dashboard. The contradiction edge is the signature element.</p>
-        </div>
-        <div class="frontend-grid">
-          <div class="fe-card fe-card-lg">
-            <div class="fe-icon">⬡</div>
-            <h4>Graph Visualizer</h4>
-            <p>Canvas-rendered graph with custom node types. <strong>ContradictionEdge</strong>: dashed, animated, gold/red glow. <strong>SupportEdge</strong>: sage green. Cluster collapse at ~30 visible nodes.</p>
-            <div class="fe-tags">
-              <span class="tag">EntityNode</span><span class="tag">ClaimNode</span>
-              <span class="tag">SourceNode</span><span class="tag tag-red">ContradictionEdge</span>
-            </div>
-          </div>
-          <div class="fe-card">
-            <div class="fe-icon">⊟</div>
-            <h4>Source-Tracing Split View</h4>
-            <p>Opens on contradiction click. Side-by-side clause attribution with author, date, scope badges, confidence indicator, and "why not a contradiction" explanation for false-positive types.</p>
-          </div>
-          <div class="fe-card">
-            <div class="fe-icon">⏱</div>
-            <h4>Temporal Slider</h4>
-            <p>Scrubs <code>published_at</code> range. Client-filters the loaded graph to show contradiction density over time. See how the narrative shifted.</p>
-          </div>
-          <div class="fe-card fe-card-phase2">
-            <div class="fe-icon">⚡</div>
-            <h4>Live Streaming <span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted);font-weight:400;"> Phase 2</span></h4>
-            <p>WebSocket hook streams agent reasoning steps. New nodes and edges appear in the graph in real time. Streamed reveal — not one big dump.</p>
-          </div>
-        </div>
-
-        <!-- Updated design token palette -->
-        <div class="design-tokens">
-          <h3>Current Palette — Peach · Apricot · Warm Cream · Baby Blue</h3>
-          <div class="token-row">
-            <div class="token-group">
-              <span class="token-label">Apricot</span>
-              <div class="token-swatch" style="background:#FFDBBA;"></div>
-              <code>#FFDBBA</code>
-            </div>
-            <div class="token-group">
-              <span class="token-label">Baby Blue</span>
-              <div class="token-swatch" style="background:#D4EBFD;"></div>
-              <code>#D4EBFD</code>
-            </div>
-            <div class="token-group">
-              <span class="token-label">Cream</span>
-              <div class="token-swatch" style="background:#FFFDF0;border:1px solid rgba(255,255,255,0.2);"></div>
-              <code>#FFFDF0</code>
-            </div>
-            <div class="token-group">
-              <span class="token-label">Peach</span>
-              <div class="token-swatch" style="background:#FFBE91;"></div>
-              <code>#FFBE91</code>
-            </div>
-            <div class="token-group">
-              <span class="token-label">Deep BG</span>
-              <div class="token-swatch" style="background:#0E141B;border:1px solid rgba(212,235,253,0.15);"></div>
-              <code>#0E141B</code>
-            </div>
-          </div>
-          <div class="token-row">
-            <div class="token-group">
-              <span class="token-label">Headline</span>
-              <code class="font-demo-headline">Space Grotesk 700</code>
-            </div>
-            <div class="token-group">
-              <span class="token-label">Body</span>
-              <code class="font-demo-body">Inter 400/500</code>
-            </div>
-            <div class="token-group">
-              <span class="token-label">Data</span>
-              <code class="font-demo-mono">JetBrains Mono</code>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── BUILD ORDER ── -->
-    <section class="section section-dark" id="build-order">
-      <div class="container">
-        <div class="section-header">
-          <span class="section-eyebrow">For AI Coding Agents</span>
-          <h2 class="section-title">Suggested Build Order</h2>
-          <p class="section-desc">Step 4 must be completed and eval'd before touching the frontend. Do not skip.</p>
-        </div>
-        <div class="build-steps">
-          <div class="build-step"><div class="step-num">01</div><div class="step-body"><h4>Postgres Schema + Event Log</h4><p>Source of truth. Migrations first. All downstream stores reference this.</p><div class="step-tags"><span class="tag">SQLite</span><span class="tag">Alembic</span></div></div></div>
-          <div class="build-step"><div class="step-num">02</div><div class="step-body"><h4>Ingestion Service (Polling)</h4><p>APScheduler polling licensed APIs. Rate-limited. Fail-safe error handling per source.</p><div class="step-tags"><span class="tag">APScheduler</span><span class="tag">NewsAPI</span><span class="tag">Redis</span></div></div></div>
-          <div class="build-step"><div class="step-num">03</div><div class="step-body"><h4>Chunking + Extraction (Dual-Write)</h4><p>Semantic chunking → LLM entity/relationship extraction → write to Qdrant + Neo4j from Postgres event.</p><div class="step-tags"><span class="tag">LlamaIndex</span><span class="tag">Qdrant</span><span class="tag">Neo4j</span></div></div></div>
-          <div class="build-step build-step-success">
-            <div class="step-num" style="color:#14B8A6;">04</div>
-            <div class="step-body">
-              <h4 style="color:#14B8A6;">LangGraph 4-Node Pipeline + Eval Set ✓</h4>
-              <p>Pipeline built and validated against evaluation benchmark harness (<code>run_eval.py</code>). 100% precision achieved across all benchmark test cases. Gate PASSED.</p>
-              <div class="step-tags">
-                <span class="tag" style="background:rgba(20,184,166,0.18); color:#14B8A6; border:1px solid rgba(20,184,166,0.35);">✓ Gate Passed</span>
-                <span class="tag">LangGraph</span>
-                <span class="tag" style="color:#14B8A6;">100% Precision</span>
-              </div>
-            </div>
-          </div>
-          <div class="build-step"><div class="step-num">05</div><div class="step-body"><h4>FastAPI REST + WebSocket Endpoint</h4><p>Wrap the LangGraph pipeline as <code>/query</code> and <code>/ws/query</code>. CORS, auth, rate limiting, query result caching.</p><div class="step-tags"><span class="tag">FastAPI</span><span class="tag">Pydantic</span><span class="tag">Uvicorn</span></div></div></div>
-          <div class="build-step"><div class="step-num">06</div><div class="step-body"><h4>Frontend: Graph + Source Tracing</h4><p>Graph visualizer + source-tracing split view against the REST endpoint. Confidence bars, "why not" explanations, temporal slider.</p><div class="step-tags"><span class="tag">Vanilla JS</span><span class="tag">Canvas SVG</span></div></div></div>
-          <div class="build-step build-step-phase2"><div class="step-num">07</div><div class="step-body"><h4>Phase 2: Kafka + WebSocket Streaming</h4><p>Only after Steps 1–6 are validated. Kafka producers, WebSocket gateway, live agent reasoning panel, temporal slider live updates.</p><div class="step-tags"><span class="tag" style="opacity:0.5;">Phase 2</span><span class="tag" style="opacity:0.5;">Kafka</span><span class="tag" style="opacity:0.5;">WebSocket</span></div></div></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── RISKS ── -->
-    <section class="section" id="risks">
-      <div class="container">
-        <div class="section-header">
-          <span class="section-eyebrow">Know Before You Build</span>
-          <h2 class="section-title">Open Risks to Track</h2>
-        </div>
-        <div class="risks-grid">
-          <div class="risk-card risk-high"><div class="risk-level">HIGH</div><h4>Classifier Precision/Recall</h4><p>Needs a real eval harness — not just vibes. Build a 50-100 example hand-labeled set before trusting the classifier in the UI. False positives kill credibility fast.</p></div>
-          <div class="risk-card risk-high"><div class="risk-level">HIGH</div><h4>Source Content Licensing</h4><p>No raw redistribution of full articles. Pull licensed summaries/APIs only. Full article text requires redistribution rights.</p></div>
-          <div class="risk-card risk-med"><div class="risk-level">MED</div><h4>Graph Readability at Scale</h4><p>Clustering strategy must be decided before launch, not bolted on. ~30 visible nodes threshold, expand-on-click groups.</p></div>
-          <div class="risk-card risk-med"><div class="risk-level">MED</div><h4>LLM Cost Model</h4><p>Query-time: 4 LLM calls per query. Ingestion-time: 1 call per chunk. Keep these separate in cost monitoring — streaming volume can silently blow up spend.</p></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── FOOTER ── -->
-    <footer class="footer">
-      <div class="container">
-        <div class="footer-inner">
-          <div class="footer-brand">
-            <span class="logo-icon">◈</span>
-            <span class="logo-text">Omni<span class="logo-accent">·</span>Perspective Engine</span>
-          </div>
-          <p class="footer-note">Build Spec v2.0 · Phase 1 Target: &gt;85% classifier precision · Backend: <code>http://localhost:8000</code></p>
-          <p class="footer-note" style="opacity:0.4;">Peach palette · Space Grotesk · JetBrains Mono</p>
-        </div>
-      </div>
-    </footer>
-
-  </div><!-- /.page-frame -->
+    </div>
+  </footer>
 
   <script src="main.js"></script>
 </body>
