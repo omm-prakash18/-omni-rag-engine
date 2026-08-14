@@ -1,0 +1,37 @@
+[
+  {
+    "id": "eval_01",
+    "query": "US CPI inflation May 2024 rate",
+    "expected_type": "methodology_mismatch",
+    "expected_entity": "US Inflation Rate",
+    "notes": "Reuters reports BLS 3.2% vs Bloomberg spot rent index 3.8% — methodology divergence."
+  },
+  {
+    "id": "eval_02",
+    "query": "US inflation rate alternate calculation",
+    "expected_type": "methodology_mismatch",
+    "expected_entity": "US Inflation Rate",
+    "notes": "AP chained CPI 3.9% vs Reuters BLS 3.2% — calculation method mismatch."
+  },
+  {
+    "id": "eval_03",
+    "query": "Federal Reserve benchmark interest rate",
+    "expected_type": "direct_contradiction",
+    "expected_entity": "Federal Funds Rate",
+    "notes": "Direct contradiction test if two sources report different rates for same period."
+  },
+  {
+    "id": "eval_04",
+    "query": "US GDP growth Q1 2024 vs Q4 2023",
+    "expected_type": "scope_mismatch",
+    "expected_entity": "US GDP Growth",
+    "notes": "Q1 2024 1.6% vs Q4 2023 3.4% — different time scope, not real conflict."
+  },
+  {
+    "id": "eval_05",
+    "query": "Core PCE vs Headline CPI rate",
+    "expected_type": "methodology_mismatch",
+    "expected_entity": "US Inflation Rate",
+    "notes": "Core PCE excludes food/energy while Headline CPI includes all categories."
+  }
+]

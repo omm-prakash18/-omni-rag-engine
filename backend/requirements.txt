@@ -1,0 +1,49 @@
+# ── Core ──────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.8.2
+pydantic-settings==2.4.0
+python-dotenv==1.0.1
+
+# ── Database ───────────────────────────────────────────
+sqlalchemy[asyncio]==2.0.35
+aiosqlite==0.20.0          # SQLite async driver (no Docker needed)
+alembic==1.13.3
+
+# ── Vector Store ──────────────────────────────────────
+qdrant-client==1.11.1
+
+# ── Graph Store ───────────────────────────────────────
+neo4j==5.24.0              # Community Edition driver
+
+# ── Cache / Queue ─────────────────────────────────────
+redis==5.1.0               # optional; falls back to in-memory if not running
+
+# ── Gemini LLM ────────────────────────────────────────
+google-generativeai==0.8.3
+langchain-google-genai==2.0.1
+
+# ── LangGraph Orchestration ───────────────────────────
+langchain>=0.3.6
+langchain-community>=0.3.6
+langgraph>=0.2.35
+
+# ── Chunking ──────────────────────────────────────────
+llama-index-core==0.11.20
+llama-index-embeddings-gemini==0.2.1
+
+# ── Ingestion ─────────────────────────────────────────
+apscheduler==3.10.4
+httpx==0.27.2              # async HTTP for NewsAPI polling
+
+# ── NLP / Sentiment ───────────────────────────────────
+textblob==0.18.0
+
+# ── Eval ──────────────────────────────────────────────
+ragas==0.1.21
+datasets==3.0.1
+
+# ── Utilities ─────────────────────────────────────────
+tenacity>=8.2.0,<9.0.0            # retry + backoff
+python-multipart==0.0.12
+websockets==13.1
