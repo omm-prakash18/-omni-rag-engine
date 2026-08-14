@@ -24,10 +24,10 @@ window.addEventListener('scroll', () => {
   let W, H, nodes;
 
   const COLORS = {
-    node_teal: 'rgba(20,184,166,0.80)',
-    node_dim:  'rgba(20,184,166,0.15)',
-    edge_teal: 'rgba(20,184,166,0.08)',
-    edge_red:  'rgba(248,113,113,0.35)',
+    node_teal: 'rgba(214,159,151,0.80)',
+    node_dim:  'rgba(214,159,151,0.15)',
+    edge_teal: 'rgba(147,130,117,0.12)',
+    edge_red:  'rgba(200,120,112,0.35)',
   };
 
   function resize() {
@@ -72,7 +72,7 @@ window.addEventListener('scroll', () => {
     }
     for (const n of nodes) {
       ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI*2);
-      ctx.fillStyle = n.type === 'accent' ? 'rgba(248,113,113,0.75)'
+      ctx.fillStyle = n.type === 'accent' ? 'rgba(200,120,112,0.75)'
                     : n.type === 'teal'   ? COLORS.node_teal
                     : COLORS.node_dim;
       ctx.fill();
@@ -100,9 +100,9 @@ window.addEventListener('scroll', () => {
   const W = 600, H = 340;
   canvas.width = W; canvas.height = H;
 
-  const TEAL  = '#14B8A6';
-  const RED   = '#F87171';
-  const CREAM = '#E2E8F0';
+  const TEAL  = '#D69F97';
+  const RED   = '#C87870';
+  const CREAM = '#2A221E';
 
   const entity  = { x: 300, y: 170, r: 38, label: 'INFLATION\nRATE 2024' };
   const sources = [
@@ -129,7 +129,7 @@ window.addEventListener('scroll', () => {
     // Support edges
     for (const s of sources) {
       ctx.setLineDash([]);
-      ctx.strokeStyle = 'rgba(20,184,166,0.12)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(214,159,151,0.25)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(entity.x, entity.y); ctx.stroke();
     }
 
@@ -141,13 +141,13 @@ window.addEventListener('scroll', () => {
       ctx.setLineDash([6, 4]);
       ctx.lineDashOffset = -phase;
       const pulse = 0.55 + 0.45 * Math.sin(t * 0.03 + ai);
-      ctx.strokeStyle = `rgba(248,113,113,${0.5 + 0.4 * pulse})`;
+      ctx.strokeStyle = `rgba(200,120,112,${0.5 + 0.4 * pulse})`;
       ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
 
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       ctx.save();
-      rr(mx-30, my-10, 60, 20, 3, `rgba(248,113,113,${0.08*pulse})`, `rgba(248,113,113,${0.45*pulse})`);
+      rr(mx-30, my-10, 60, 20, 3, `rgba(200,120,112,${0.12*pulse})`, `rgba(200,120,112,0.45)`);
       ctx.fillStyle = RED; ctx.font = '600 8px "JetBrains Mono",monospace';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.setLineDash([]);
@@ -159,8 +159,8 @@ window.addEventListener('scroll', () => {
     // Entity center node
     const ep = 0.5 + 0.5 * Math.sin(t * 0.018);
     ctx.beginPath(); ctx.arc(entity.x, entity.y, entity.r, 0, Math.PI*2);
-    ctx.fillStyle = '#070C14';
-    ctx.strokeStyle = `rgba(20,184,166,${0.5 + 0.3*ep})`;
+    ctx.fillStyle = '#FAF7F3';
+    ctx.strokeStyle = `rgba(214,159,151,${0.6 + 0.3*ep})`;
     ctx.lineWidth = 2; ctx.fill(); ctx.stroke();
     ctx.fillStyle = CREAM; ctx.font = 'bold 9px "Inter",sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -168,7 +168,7 @@ window.addEventListener('scroll', () => {
 
     // Source nodes
     for (const s of sources) {
-      rr(s.x-44, s.y-22, 88, 44, 6, '#0D1520', s.color + '80');
+      rr(s.x-44, s.y-22, 88, 44, 6, '#F3E8D8', s.color);
       ctx.setLineDash([]);
       ctx.fillStyle = s.color; ctx.font = '600 10px "Inter",sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -179,8 +179,8 @@ window.addEventListener('scroll', () => {
 
     // Status line
     const alpha = 0.5 + 0.4 * Math.sin(t * 0.022);
-    ctx.fillStyle = `rgba(248,113,113,${alpha})`;
-    ctx.font = '500 9px "JetBrains Mono",monospace';
+    ctx.fillStyle = `rgba(200,120,112,${alpha})`;
+    ctx.font = '600 9px "JetBrains Mono",monospace';
     ctx.textAlign = 'center';
     ctx.fillText('3 ACTIVE CONTRADICTIONS DETECTED', 300, 318);
 
