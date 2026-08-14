@@ -24,9 +24,14 @@ def _score_chunk_relevance(query: str, chunk: Dict[str, Any]) -> float:
     """Evaluate relevance of a retrieved chunk against the query [0.0 to 1.0]."""
     query_clean = query.strip().lower()
     
-    # Conversational / low-intent guardrail
-    conversational = {"hi", "hello", "hey", "test", "demo", "ok", "a", "an", "the", "who", "what"}
-    if query_clean in conversational or len(query_clean) < 3:
+    # Conversational & generic non-entity word guardrail
+    generic_non_entity = {
+        "hi", "hello", "hey", "test", "demo", "ok", "a", "an", "the", "who", "what", "where", "when", "why", "how",
+        "high", "higher", "highest", "low", "lower", "lowest", "good", "bad", "big", "small",
+        "show", "list", "find", "get", "search", "query", "data", "info", "news", "report", "article",
+        "number", "value", "rate", "rates", "trend", "trends", "stat", "stats", "check", "verify"
+    }
+    if query_clean in generic_non_entity or len(query_clean) < 3:
         return 0.0
 
     # Stopwords filter to focus relevance on domain keywords
@@ -115,11 +120,17 @@ def run_crag_agent(query: str, raw_chunks: List[Dict[str, Any]]) -> Tuple[List[D
     Returns: (refined_chunks, crag_metrics)
     """
     query_clean = query.strip().lower()
-    conversational = {"hi", "hello", "hey", "test", "demo", "ok", "a", "an", "the", "who", "what"}
 
-    # Guardrail check for low-intent query
-    if query_clean in conversational or len(query_clean) < 3:
-        logger.info("CRAG Agent: Low-intent / conversational query detected ('%s'). Skipping retrieval.", query)
+    # Guardrail check for low-intent & generic single-word queries
+    generic_non_entity = {
+        "hi", "hello", "hey", "test", "demo", "ok", "a", "an", "the", "who", "what", "where", "when", "why", "how",
+        "high", "higher", "highest", "low", "lower", "lowest", "good", "bad", "big", "small",
+        "show", "list", "find", "get", "search", "query", "data", "info", "news", "report", "article",
+        "number", "value", "rate", "rates", "trend", "trends", "stat", "stats", "check", "verify"
+    }
+
+    if query_clean in generic_non_entity or len(query_clean) < 3:
+        logger.info("CRAG Agent: Low-intent / generic non-entity query detected ('%s'). Skipping retrieval.", query)
         metrics = {
             "action": "LOW_INTENT_SKIPPED",
             "avg_relevance": 0.0,
