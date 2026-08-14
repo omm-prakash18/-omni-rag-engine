@@ -559,3 +559,50 @@ a { text-decoration: none; color: inherit; }
   .stat-divider { display: none; }
   .graph-legend { display: none; }
 }
+
+/* =========================================================
+   FILTER CONTROLS BAR & AI RESOLUTION BOX
+   ========================================================= */
+.filter-controls-card {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 0.85rem 1.2rem;
+  margin-bottom: 1rem;
+}
+.filter-row { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; }
+.filter-group { display: flex; align-items: center; gap: 0.6rem; }
+.filter-label { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+.filter-chips { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+.filter-chip {
+  background: var(--bg-3); border: 1px solid var(--border);
+  color: var(--text-secondary); font-family: var(--font-mono); font-size: 0.72rem;
+  padding: 0.22rem 0.6rem; border-radius: 14px; cursor: pointer; transition: all 0.15s ease;
+}
+.filter-chip:hover { border-color: var(--teal); color: var(--teal); }
+.filter-chip.active { background: var(--teal-dim); border-color: var(--teal); color: var(--teal); font-weight: 600; }
+
+.conf-slider-bar { width: 100px; height: 4px; appearance: none; background: var(--bg-3); border-radius: 2px; outline: none; }
+.conf-slider-bar::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--teal); cursor: pointer; }
+.conf-val-badge { font-family: var(--font-mono); font-size: 0.72rem; color: var(--teal); font-weight: 600; }
+
+.action-btn-secondary {
+  background: var(--bg-2); border: 1px solid var(--border); color: var(--text-secondary);
+  font-family: var(--font-mono); font-size: 0.72rem; padding: 0.35rem 0.75rem;
+  border-radius: 16px; cursor: pointer; transition: all 0.18s ease;
+}
+.action-btn-secondary:hover { border-color: var(--teal); color: var(--teal); background: var(--teal-dim); }
+
+.resolution-box {
+  background: rgba(20,184,166,0.08); border-left: 3px solid var(--teal);
+  border-radius: var(--radius-sm); padding: 0.75rem 0.95rem; margin-top: 0.6rem;
+}
+.resolution-label { font-family: var(--font-mono); font-size: 0.68rem; color: var(--teal); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+.resolution-text  { font-size: 0.82rem; color: var(--text-primary); line-height: 1.5; }
+
+.modal-input {
+  width: 100%; background: var(--bg-0); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 0.55rem 0.85rem;
+  color: var(--text-primary); font-family: var(--font-body); font-size: 0.85rem; outline: none;
+}
+.modal-input:focus { border-color: var(--teal); box-shadow: 0 0 0 2px rgba(20,184,166,0.15); }
+

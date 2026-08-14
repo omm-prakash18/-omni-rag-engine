@@ -37,6 +37,7 @@ class Contradiction(BaseModel):
     metric: Optional[str] = None   # e.g. "CPI year-over-year"
     contradiction_type: ContradictionType
     reason: str                    # classifier explanation
+    ai_resolution: Optional[str] = None # AI reconciliation summary
     confidence: float = Field(ge=0.0, le=1.0)
     source_a: SourceRef
     source_b: SourceRef
@@ -86,6 +87,21 @@ class QueryResponse(BaseModel):
 
 
 # ── Ingest ────────────────────────────────────────────────────────────────────
+class CustomIngestRequest(BaseModel):
+    source_name: str = Field(default="Custom Ingestion", min_length=2, max_length=100)
+    title: str = Field(default="User Submitted Article", min_length=3, max_length=200)
+    content: str = Field(min_length=20, max_length=20000)
+    author: Optional[str] = None
+    url: Optional[str] = None
+
+
+class CustomIngestResponse(BaseModel):
+    status: str
+    source_name: str
+    chunks_created: int
+    message: str
+
+
 class IngestTriggerResponse(BaseModel):
     status: str
     job_id: Optional[int] = None

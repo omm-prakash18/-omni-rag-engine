@@ -14,8 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.event_log import IngestionJob, Source
-from app.schemas.api import IngestStatusItem, IngestStatusResponse, IngestTriggerResponse
-from app.services.ingestion import run_ingestion_pipeline
+from app.schemas.api import (
+    CustomIngestRequest,
+    CustomIngestResponse,
+    IngestStatusItem,
+    IngestStatusResponse,
+    IngestTriggerResponse,
+)
+from app.services.ingestion import ingest_custom_article, run_ingestion_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +39,28 @@ async def trigger_ingestion(background_tasks: BackgroundTasks):
         )
     except Exception as e:
         logger.error("Failed to trigger ingestion: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/custom", response_model=CustomIngestResponse)
+async def submit_custom_article(req: CustomIngestRequest):
+    """Submit a custom news article/snippet for real-time indexing into vector & database stores."""
+    try:
+        chunks_count = await ingest_custom_article(
+            source_name=req.source_name,
+            title=req.title,
+            content=req.content,
+            author=req.author,
+            url=req.url,
+        )
+        return CustomIngestResponse(
+            status="success",
+            source_name=req.source_name,
+            chunks_created=chunks_count,
+            message=f"Successfully indexed '{req.title}' ({chunks_count} semantic chunks created).",
+        )
+    except Exception as e:
+        logger.error("Failed to ingest custom article: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -70,3 +98,4 @@ async def get_ingestion_status(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error("Error fetching ingestion status: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+

@@ -103,7 +103,6 @@ window.addEventListener('scroll', () => {
   const TEAL  = '#14B8A6';
   const RED   = '#F87171';
   const CREAM = '#E2E8F0';
-  const MUTED = '#475569';
 
   const entity  = { x: 300, y: 170, r: 38, label: 'INFLATION\nRATE 2024' };
   const sources = [
@@ -192,21 +191,20 @@ window.addEventListener('scroll', () => {
 })();
 
 /* =====================================================
-   LIVE QUERY ENGINE
+   LIVE QUERY ENGINE & GLOBAL STATE
    ===================================================== */
 let globalContradictions = [];
 let globalGraphData = { nodes: [], edges: [] };
+let globalStepsTrace = [];
+let globalQueryString = "";
 let activeWebSocket = null;
 let isClustered = false;
 let graphZoomScale = 1.0;
 
-const STAGE_LABELS = [
-  'Reading sources…',
-  'CRAG evaluation…',
-  'Mapping entities…',
-  'Grouping claims…',
-  'Classifying conflicts…',
-];
+/* Active Filter States */
+let activeTaxonomyFilter = 'all';
+let minConfidenceThreshold = 50; // percentage (50-95)
+let currentTemporalVal = 100;
 
 function setPresetQuery(text) {
   const input = document.getElementById('queryInput');
@@ -257,6 +255,7 @@ async function handleQuerySubmit(event) {
   const query = input ? input.value.trim() : '';
   if (!query) return;
 
+  globalQueryString = query;
   const form = document.getElementById('queryForm');
   if (form) form.classList.add('committed');
 
@@ -282,7 +281,7 @@ async function handleQuerySubmit(event) {
   const queryTitleEl = document.getElementById('resultsQueryTitle');
 
   if (queryTitleEl) queryTitleEl.textContent = `"${query}"`;
-  if (traceBox)  traceBox.innerHTML = `<div class="trace-step-item" style="color:var(--gold);font-style:italic;">⏳ Initializing pipeline…</div>`;
+  if (traceBox)  traceBox.innerHTML = `<div class="trace-step-item" style="color:var(--gold);font-style:italic;">⏳ Initializing 5-node LangGraph pipeline...</div>`;
   if (tracePill) {
     tracePill.textContent = 'Executing…';
     tracePill.style.background = 'rgba(200,169,107,0.15)';
@@ -332,6 +331,7 @@ async function handleQuerySubmit(event) {
       const data = await resp.json();
       globalContradictions = data.contradictions || [];
       globalGraphData = data.graph || { nodes: [], edges: [] };
+      globalStepsTrace = data.steps || [];
 
       if (data.steps && traceBox) {
         traceBox.innerHTML = '';
@@ -346,7 +346,7 @@ async function handleQuerySubmit(event) {
         });
       }
       cleanupLoadingUI('done');
-      finishRender(globalGraphData, globalContradictions);
+      finishRender();
     } catch(err) {
       cleanupLoadingUI('error', `${err.message}. Is the server running on port 8000?`);
     }
@@ -388,12 +388,14 @@ async function handleQuerySubmit(event) {
             traceBox.innerHTML += `<div class="trace-step-item fade-in-up">⚡ ${msg.data}</div>`;
             traceBox.scrollTop = traceBox.scrollHeight;
           }
+          globalStepsTrace.push(msg.data);
         } else if (msg.type === 'done') {
           if (msg.data) {
             if (msg.data.contradictions) globalContradictions = msg.data.contradictions;
             if (msg.data.graph) globalGraphData = msg.data.graph;
+            if (msg.data.steps) globalStepsTrace = msg.data.steps;
             cleanupLoadingUI('done');
-            finishRender(globalGraphData, globalContradictions);
+            finishRender();
           }
         } else if (msg.type === 'error') {
           throw new Error(msg.data);
@@ -419,16 +421,65 @@ async function handleQuerySubmit(event) {
 }
 
 /* ── Render after data arrives ── */
-function finishRender(graphData, contradictions) {
+function finishRender() {
   const skeleton = document.getElementById('skeletonGraph');
   const graphCanvas = document.getElementById('interactiveGraphCanvas');
   const delay = prefersReducedMotion() ? 0 : 280;
   setTimeout(() => {
     if (skeleton) skeleton.classList.remove('visible');
     if (graphCanvas) graphCanvas.style.display = 'block';
-    renderInteractiveGraph(graphData, contradictions);
-    renderLiveResults(contradictions);
+    applyGlobalFilters();
   }, delay);
+}
+
+/* =====================================================
+   MULTI-DIMENSIONAL FILTER CONTROL SYSTEM
+   ===================================================== */
+function filterByTaxonomy(taxType, btnEl) {
+  activeTaxonomyFilter = taxType;
+  if (btnEl) {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    btnEl.classList.add('active');
+  }
+  applyGlobalFilters();
+}
+
+function handleConfSliderChange(val) {
+  minConfidenceThreshold = parseInt(val, 10);
+  const badge = document.getElementById('minConfBadge');
+  if (badge) badge.textContent = `${minConfidenceThreshold}%+`;
+  applyGlobalFilters();
+}
+
+function applyGlobalFilters() {
+  let filtered = globalContradictions.filter(c => {
+    // 1. Taxonomy Filter
+    if (activeTaxonomyFilter !== 'all' && c.contradiction_type !== activeTaxonomyFilter) {
+      return false;
+    }
+    // 2. Confidence Filter
+    const confPct = Math.round((c.confidence || 0.9) * 100);
+    if (confPct < minConfidenceThreshold) {
+      return false;
+    }
+    // 3. Timeline Filter
+    const maxDate = currentTemporalVal < 35
+      ? new Date('2024-05-15T23:59:59Z')
+      : currentTemporalVal < 70
+      ? new Date('2024-05-16T23:59:59Z')
+      : new Date('2024-05-17T23:59:59Z');
+    
+    const dA = c.source_a?.published_at ? new Date(c.source_a.published_at) : null;
+    const dB = c.source_b?.published_at ? new Date(c.source_b.published_at) : null;
+    if (dA && dA > maxDate) return false;
+    if (dB && dB > maxDate) return false;
+
+    return true;
+  });
+
+  renderLiveResults(filtered);
+  const filteredGraph = getGraphDataForContradictions(filtered);
+  renderInteractiveGraph(filteredGraph, filtered);
 }
 
 /* ── Graph controls ── */
@@ -457,7 +508,7 @@ function renderInteractiveGraph(graphData, contradictions) {
   const edges = graphData.edges || [];
 
   if (nodes.length === 0 && (!contradictions || contradictions.length === 0)) {
-    canvas.innerHTML = `<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);font-family:var(--font-mono);font-size:0.88rem;">No nodes. Submit a query above.</div>`;
+    canvas.innerHTML = `<div style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--text-muted);font-family:var(--font-mono);font-size:0.88rem;">No matching nodes for current filters. Submit a query above or lower confidence slider.</div>`;
     return;
   }
 
@@ -537,26 +588,16 @@ function getGraphDataForContradictions(contradictions) {
 }
 
 function handleTemporalSlide(val) {
+  currentTemporalVal = parseInt(val, 10);
   const badge = document.getElementById('temporalDateBadge');
-  const num = parseInt(val, 10);
-  let maxDate;
-  if (num < 35) {
-    maxDate = new Date('2024-05-15T23:59:59Z');
+  if (currentTemporalVal < 35) {
     if (badge) badge.textContent = 'May 15, 2024';
-  } else if (num < 70) {
-    maxDate = new Date('2024-05-16T23:59:59Z');
+  } else if (currentTemporalVal < 70) {
     if (badge) badge.textContent = 'May 15–16, 2024';
   } else {
-    maxDate = new Date('2024-05-17T23:59:59Z');
     if (badge) badge.textContent = 'Full Range';
   }
-  const filtered = globalContradictions.filter(c => {
-    const dA = c.source_a?.published_at ? new Date(c.source_a.published_at) : null;
-    const dB = c.source_b?.published_at ? new Date(c.source_b.published_at) : null;
-    return (!dA || dA <= maxDate) && (!dB || dB <= maxDate);
-  });
-  renderLiveResults(filtered);
-  renderInteractiveGraph(getGraphDataForContradictions(filtered), filtered);
+  applyGlobalFilters();
 }
 
 /* ── Split view modal ── */
@@ -569,9 +610,9 @@ function openSplitViewModal(cId) {
   const confPct = Math.round((c.confidence || 0.9) * 100);
   document.getElementById('splitModalType').textContent = type;
 
-  const confBar  = document.getElementById('splitModalConfBar');
+  const confBar   = document.getElementById('splitModalConfBar');
   const confPctEl = document.getElementById('splitModalConfPct');
-  const confWrap = document.getElementById('splitModalConfidence');
+  const confWrap  = document.getElementById('splitModalConfidence');
   if (confBar && confPctEl && confWrap) {
     confBar.style.width = `${confPct}%`;
     confPctEl.textContent = `${confPct}%`;
@@ -580,6 +621,13 @@ function openSplitViewModal(cId) {
   }
 
   document.getElementById('splitModalReason').textContent = c.reason || 'No classifier explanation available.';
+
+  // Render AI Resolution Recommendation
+  const resBox  = document.getElementById('splitResolutionBox');
+  const resText = document.getElementById('splitResolutionText');
+  if (resBox && resText) {
+    resText.textContent = c.ai_resolution || 'Reconciliation: Cross-reference primary survey scope against spot market index methodologies.';
+  }
 
   const whyBox  = document.getElementById('splitWhyNotBox');
   const whyText = document.getElementById('splitWhyNotText');
@@ -668,7 +716,8 @@ function renderLiveResults(contradictions) {
 
   if (!contradictions || contradictions.length === 0) {
     list.innerHTML = `<div style="color:var(--text-muted);text-align:center;padding:3rem;font-family:var(--font-mono);font-size:0.88rem;">
-      No contradictions detected in this query range.
+      No contradictions match the current taxonomy and confidence filters.<br/>
+      <span style="font-size:0.75rem;opacity:0.6;">Try lowering the confidence slider or switching to 'All Types'.</span>
     </div>`;
     return;
   }
@@ -678,6 +727,13 @@ function renderLiveResults(contradictions) {
     const confClass = confPct >= 85 ? 'confidence-high' : confPct >= 60 ? 'confidence-med' : 'confidence-low';
     const cType = (c.contradiction_type || 'unknown').replace(/_/g, ' ');
     const isFP = ['scope_mismatch', 'methodology_mismatch', 'stale'].includes(c.contradiction_type);
+
+    const resolutionHtml = c.ai_resolution ? `
+      <div class="resolution-box" style="margin-bottom:0.75rem;">
+        <div class="resolution-label">🤖 AI Resolution:</div>
+        <div class="resolution-text">${c.ai_resolution}</div>
+      </div>
+    ` : '';
 
     const whyNotHtml = isFP ? `
       <div class="why-not-box">
@@ -706,6 +762,7 @@ function renderLiveResults(contradictions) {
           <span class="confidence-pct">${confPct}%</span>
         </div>
         <p class="contra-reason-text"><strong>Classifier:</strong> ${c.reason}</p>
+        ${resolutionHtml}
         ${whyNotHtml}
         <div class="contra-sources-grid">
           <div class="source-box">
@@ -725,9 +782,213 @@ function renderLiveResults(contradictions) {
   }).join('');
 }
 
+/* =====================================================
+   CUSTOM INGESTION MODAL HANDLERS
+   ===================================================== */
+function openIngestModal() {
+  const modal = document.getElementById('ingestModal');
+  if (modal) modal.style.display = 'flex';
+}
+function closeIngestModal() {
+  const modal = document.getElementById('ingestModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function handleCustomIngestSubmit(event) {
+  if (event && event.preventDefault) event.preventDefault();
+
+  const source_name = document.getElementById('ingestSourceName').value.trim();
+  const title       = document.getElementById('ingestTitle').value.trim();
+  const content     = document.getElementById('ingestContent').value.trim();
+  const author      = document.getElementById('ingestAuthor').value.trim() || undefined;
+  const url         = document.getElementById('ingestUrl').value.trim() || undefined;
+
+  const btn = document.getElementById('ingestSubmitBtn');
+  const feedback = document.getElementById('ingestFeedback');
+
+  if (btn) btn.textContent = '⏳ Indexing…';
+  if (feedback) {
+    feedback.style.display = 'block';
+    feedback.style.background = 'rgba(200,169,107,0.15)';
+    feedback.style.color = 'var(--gold)';
+    feedback.textContent = 'Indexing article content into Qdrant & database...';
+  }
+
+  try {
+    const isPort8000 = window.location.port === '8000';
+    const apiHost = isPort8000 ? window.location.origin : 'http://localhost:8000';
+    const resp = await fetch(`${apiHost}/ingest/custom`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_name, title, content, author, url }),
+    });
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    const data = await resp.json();
+
+    if (feedback) {
+      feedback.style.background = 'rgba(20,184,166,0.15)';
+      feedback.style.color = 'var(--teal)';
+      feedback.textContent = `✓ ${data.message}`;
+    }
+    setTimeout(() => {
+      closeIngestModal();
+      document.getElementById('customIngestForm').reset();
+      if (feedback) feedback.style.display = 'none';
+      if (btn) btn.textContent = '⚡ Index Article';
+    }, 1200);
+
+  } catch(err) {
+    if (feedback) {
+      feedback.style.background = 'rgba(248,113,113,0.15)';
+      feedback.style.color = 'var(--red)';
+      feedback.textContent = `❌ Indexing error: ${err.message}`;
+    }
+    if (btn) btn.textContent = '⚡ Index Article';
+  }
+}
+
+/* =====================================================
+   INGESTION STATUS MODAL HANDLERS
+   ===================================================== */
+async function openStatusModal() {
+  const modal = document.getElementById('statusModal');
+  if (modal) modal.style.display = 'flex';
+
+  const bodyEl = document.getElementById('statusModalBody');
+  if (!bodyEl) return;
+  bodyEl.innerHTML = `⏳ Fetching database & vector index statistics…`;
+
+  try {
+    const isPort8000 = window.location.port === '8000';
+    const apiHost = isPort8000 ? window.location.origin : 'http://localhost:8000';
+    const resp = await fetch(`${apiHost}/ingest/status`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    if (!data.sources || data.sources.length === 0) {
+      bodyEl.innerHTML = `<div style="color:var(--text-muted);">No ingestion runs logged yet. Click below to trigger a background poll.</div>`;
+      return;
+    }
+
+    bodyEl.innerHTML = `
+      <table style="width:100%; border-collapse:collapse; text-align:left;">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border); color:var(--teal);">
+            <th style="padding:0.4rem;">Source</th>
+            <th style="padding:0.4rem;">Status</th>
+            <th style="padding:0.4rem;">Fetched</th>
+            <th style="padding:0.4rem;">Chunks</th>
+            <th style="padding:0.4rem;">Last Poll</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.sources.map(s => `
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+              <td style="padding:0.4rem; font-weight:600;">${s.source}</td>
+              <td style="padding:0.4rem;"><span style="color:${s.status==='done'?'var(--teal)':'var(--gold)'}">${s.status}</span></td>
+              <td style="padding:0.4rem;">${s.articles_fetched}</td>
+              <td style="padding:0.4rem;">${s.chunks_created}</td>
+              <td style="padding:0.4rem; opacity:0.7;">${s.last_run ? strDate(s.last_run) : 'Never'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch(err) {
+    bodyEl.innerHTML = `<div style="color:var(--red);">Error loading status: ${err.message}. Is backend running on port 8000?</div>`;
+  }
+}
+
+function closeStatusModal() {
+  const modal = document.getElementById('statusModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function triggerManualPoll(btnEl) {
+  if (btnEl) btnEl.textContent = '⏳ Triggering…';
+  try {
+    const isPort8000 = window.location.port === '8000';
+    const apiHost = isPort8000 ? window.location.origin : 'http://localhost:8000';
+    await fetch(`${apiHost}/ingest/trigger`, { method: 'POST' });
+    if (btnEl) btnEl.textContent = '✓ Poll Triggered!';
+    setTimeout(() => { openStatusModal(); if (btnEl) btnEl.textContent = '🔄 Trigger Ingestion Poll'; }, 1500);
+  } catch(err) {
+    if (btnEl) btnEl.textContent = '❌ Failed';
+  }
+}
+
+/* =====================================================
+   REPORT EXPORT GENERATOR
+   ===================================================== */
+function exportAnalysisReport(format) {
+  if (!globalContradictions || globalContradictions.length === 0) {
+    alert("No active contradictions to export. Submit a query first.");
+    return;
+  }
+
+  const queryName = globalQueryString || "contradiction-analysis";
+
+  if (format === 'json') {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+      query: globalQueryString,
+      timestamp: new Date().toISOString(),
+      contradictions_count: globalContradictions.length,
+      contradictions: globalContradictions,
+      agent_trace: globalStepsTrace,
+    }, null, 2));
+
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `${queryName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_report.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+
+  } else {
+    // Markdown export
+    let md = `# Omni-Perspective Engine — Contradiction Analysis Report\n\n`;
+    md += `**Query**: \`${globalQueryString}\`  \n`;
+    md += `**Generated**: ${new Date().toUTCString()}  \n`;
+    md += `**Detected Contradictions**: ${globalContradictions.length}  \n\n`;
+    md += `---  \n\n`;
+
+    globalContradictions.forEach((c, idx) => {
+      md += `## ${idx + 1}. Entity: ${c.entity}\n`;
+      md += `- **Taxonomy Type**: \`${c.contradiction_type}\`  \n`;
+      md += `- **Classifier Confidence**: \`${Math.round(c.confidence * 100)}%\`  \n`;
+      md += `- **Diagnosis**: ${c.reason}  \n`;
+      if (c.ai_resolution) {
+        md += `- **AI Resolution**: ${c.ai_resolution}  \n`;
+      }
+      md += `\n### Source Attribution:\n`;
+      md += `- **Source A (${c.source_a.source_name})**: "${c.source_a.excerpt}"  \n`;
+      md += `- **Source B (${c.source_b.source_name})**: "${c.source_b.excerpt}"  \n\n`;
+      md += `---  \n\n`;
+    });
+
+    md += `## Agent Pipeline Execution Trace\n`;
+    globalStepsTrace.forEach(step => {
+      md += `- ${step}\n`;
+    });
+
+    const dataStr = "data:text/markdown;charset=utf-8," + encodeURIComponent(md);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `${queryName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_report.md`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  }
+}
+
 /* ── Keyboard: Escape closes modal ── */
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeSplitViewModal();
+  if (e.key === 'Escape') {
+    closeSplitViewModal();
+    closeIngestModal();
+    closeStatusModal();
+  }
 });
 
 function showLiveDemo(event) {

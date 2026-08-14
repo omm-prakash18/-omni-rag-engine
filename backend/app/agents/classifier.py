@@ -51,6 +51,7 @@ Return ONLY valid JSON matching this schema:
 {{
   "contradiction_type": "direct_contradiction | stale | scope_mismatch | methodology_mismatch",
   "reason": "Detailed concise explanation of why this category was chosen",
+  "ai_resolution": "Actionable 1-2 sentence recommendation for an analyst on how to reconcile these figures",
   "confidence": 0.95
 }}
 """
@@ -88,6 +89,7 @@ Return ONLY valid JSON matching this schema:
         return {
             "contradiction_type": "scope_mismatch",
             "reason": f"Claim A covers timeframe '{date_a or 'Q1'}' while Claim B covers '{date_b or 'Q4'}' — different time scopes.",
+            "ai_resolution": "Treat both data points as sequential progression across different reporting timeframes rather than conflicting facts.",
             "confidence": 0.95,
         }
 
@@ -99,6 +101,7 @@ Return ONLY valid JSON matching this schema:
         return {
             "contradiction_type": "direct_contradiction",
             "reason": f"{claim_a['source_name']} reports {val_a} while {claim_b['source_name']} reports {val_b} for the exact same metric ({meth_a}) and timeframe.",
+            "ai_resolution": "Flag for primary source audit: check official agency release notes or correction notices for data revision.",
             "confidence": 0.96,
         }
 
@@ -114,23 +117,26 @@ Return ONLY valid JSON matching this schema:
                 f"{claim_a['source_name']} uses {meth_a or 'official index'} "
                 f"whereas {claim_b['source_name']} uses {meth_b or 'alternative calculation method'}."
             ),
+            "ai_resolution": f"Use {claim_a['source_name']} for standard macroeconomic benchmark; use {claim_b['source_name']} for leading/alternative indicators.",
             "confidence": 0.93,
         }
 
-    # 3. Check for Stale dates
+    # 4. Check for Stale dates
     pub_a = claim_a.get("published_at")
     pub_b = claim_b.get("published_at")
     if pub_a and pub_b and str(pub_a)[:10] != str(pub_b)[:10]:
         return {
             "contradiction_type": "stale",
             "reason": f"Claim from {claim_a['source_name']} is from {pub_a} and may be superseded by {claim_b['source_name']} ({pub_b}).",
+            "ai_resolution": "Rely on the more recent publication timestamp for current decision-making.",
             "confidence": 0.88,
         }
 
-    # 4. Direct Contradiction
+    # 5. Default Direct Contradiction
     return {
         "contradiction_type": "direct_contradiction",
         "reason": f"{claim_a['source_name']} reports {val_a} while {claim_b['source_name']} reports {val_b} for the exact same metric and timeframe.",
+        "ai_resolution": "Direct statistical disagreement: cross-reference raw agency tables before drawing conclusions.",
         "confidence": 0.96,
     }
 
@@ -211,6 +217,7 @@ def run_classifier_agent(candidate_groups: List[Dict[str, Any]]) -> List[Contrad
                         metric=ca["value"] + " vs " + cb["value"],
                         contradiction_type=c_type,
                         reason=res["reason"],
+                        ai_resolution=res.get("ai_resolution"),
                         confidence=res.get("confidence", 0.9),
                         source_a=src_ref_a,
                         source_b=src_ref_b,

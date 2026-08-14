@@ -203,3 +203,30 @@ async def run_ingestion_pipeline(queries: Optional[List[str]] = None) -> Ingesti
         await db.refresh(job)
         logger.info("Ingestion job #%d complete: %d articles, %d chunks", job.id, job.articles_fetched, job.chunks_created)
         return job
+
+
+async def ingest_custom_article(
+    source_name: str,
+    title: str,
+    content: str,
+    author: Optional[str] = None,
+    url: Optional[str] = None,
+) -> int:
+    """Fast-track index a custom user-submitted article snippet."""
+    async with AsyncSessionLocal() as db:
+        src = await _get_or_create_source(db, source_name)
+        chunks = chunk_article(
+            raw_text=content,
+            source_name=src.name,
+            source_id=src.id,
+            author=author,
+            title=title,
+            url=url,
+            published_at=datetime.now(timezone.utc),
+        )
+        if chunks:
+            await process_and_store_chunks_batch(db, chunks)
+            logger.info("Custom article '%s' indexed successfully (%d chunks)", title, len(chunks))
+            return len(chunks)
+        return 0
+

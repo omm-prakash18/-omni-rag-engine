@@ -20,8 +20,9 @@
         <span class="logo-text">omni<span class="logo-accent">·</span>engine</span>
       </a>
       <div class="nav-actions">
+        <button type="button" class="nav-btn-outline" onclick="openIngestModal()">+ Submit Article</button>
+        <button type="button" class="nav-btn-outline" onclick="openStatusModal()">Source Status</button>
         <a href="#live-results-section" class="nav-btn-dark" onclick="showLiveDemo(event)">Try Demo</a>
-        <a href="https://github.com/omm-prakash18/-omni-rag-engine" target="_blank" rel="noopener" class="nav-btn-outline">GitHub</a>
       </div>
     </div>
   </nav>
@@ -137,15 +138,19 @@
   <!-- ── LIVE RESULTS SECTION ── -->
   <section class="section section-dark" id="live-results-section" style="display:none;">
     <div class="container">
-      <div class="section-header" style="text-align:left; margin-bottom:2rem;">
+      <div class="section-header" style="text-align:left; margin-bottom:1.5rem;">
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
           <div>
             <span class="section-eyebrow">Real-Time Pipeline Result</span>
             <h2 class="section-title" id="resultsQueryTitle" style="font-size:1.8rem;">Analysis Ready</h2>
           </div>
-          <div class="ws-badge-live" id="wsStatusBadge">
-            <span class="ws-dot"></span>
-            <span id="wsStatusText">CONNECTING…</span>
+          <div style="display:flex; align-items:center; gap:0.75rem;">
+            <button type="button" class="action-btn-secondary" onclick="exportAnalysisReport('markdown')">📥 Export Markdown</button>
+            <button type="button" class="action-btn-secondary" onclick="exportAnalysisReport('json')">📥 Export JSON</button>
+            <div class="ws-badge-live" id="wsStatusBadge">
+              <span class="ws-dot"></span>
+              <span id="wsStatusText">CONNECTING…</span>
+            </div>
           </div>
         </div>
         <p class="section-desc" id="resultsSummary" style="text-align:left; margin:0.5rem 0 0;">
@@ -162,12 +167,34 @@
         <div class="trace-steps" id="traceSteps"></div>
       </div>
 
-      <!-- Temporal Slider -->
+      <!-- Multi-Dimensional Filter Controls Bar -->
+      <div class="filter-controls-card">
+        <div class="filter-row">
+          <div class="filter-group">
+            <span class="filter-label">Filter Taxonomy:</span>
+            <div class="filter-chips">
+              <button type="button" class="filter-chip active" data-taxonomy="all" onclick="filterByTaxonomy('all', this)">All Types</button>
+              <button type="button" class="filter-chip" data-taxonomy="direct_contradiction" onclick="filterByTaxonomy('direct_contradiction', this)">Direct</button>
+              <button type="button" class="filter-chip" data-taxonomy="methodology_mismatch" onclick="filterByTaxonomy('methodology_mismatch', this)">Methodology</button>
+              <button type="button" class="filter-chip" data-taxonomy="scope_mismatch" onclick="filterByTaxonomy('scope_mismatch', this)">Scope Mismatch</button>
+              <button type="button" class="filter-chip" data-taxonomy="stale" onclick="filterByTaxonomy('stale', this)">Stale</button>
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <span class="filter-label">Min Confidence:</span>
+            <input type="range" class="conf-slider-bar" id="minConfSlider" min="50" max="95" value="50" oninput="handleConfSliderChange(this.value)" />
+            <span class="conf-val-badge" id="minConfBadge">50%+</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timeline Filter Slider -->
       <div class="temporal-slider-card">
         <div class="temporal-header">
           <div class="temporal-label">
             <span class="calendar-icon">📅</span>
-            <span>Timeline Filter</span>
+            <span>Timeline Scrub Filter</span>
           </div>
           <span class="date-display-badge" id="temporalDateBadge">Full Range</span>
         </div>
@@ -215,7 +242,7 @@
       <div style="margin-top:2rem;">
         <h3 style="font-family:var(--font-headline);font-size:1.4rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;margin-bottom:1.5rem;color:var(--text-primary);">
           Detected Contradictions
-          <span style="font-family:var(--font-mono);font-size:0.75rem;font-weight:400;color:var(--text-muted);margin-left:0.75rem;">Click any card to trace sources</span>
+          <span style="font-family:var(--font-mono);font-size:0.75rem;font-weight:400;color:var(--text-muted);margin-left:0.75rem;">Click any card to trace sources & view AI resolution</span>
         </h3>
         <div class="live-contradictions" id="liveContradictionsList"></div>
       </div>
@@ -228,7 +255,7 @@
     <div class="split-modal-container">
       <div class="split-modal-header">
         <div>
-          <div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--gold);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.25rem;">
+          <div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--teal);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.25rem;">
             Source Attribution · Side-by-Side
           </div>
           <div class="split-modal-title" id="splitModalEntity">Contradiction Diagnosis</div>
@@ -236,7 +263,7 @@
         <button class="close-modal-btn" onclick="closeSplitViewModal()">✕</button>
       </div>
 
-      <div style="background:var(--bg-2);padding:1rem 1.25rem;border-radius:var(--radius-sm);border-left:3px solid var(--gold);margin-bottom:1.25rem;">
+      <div style="background:var(--bg-2);padding:1rem 1.25rem;border-radius:var(--radius-sm);border-left:3px solid var(--teal);margin-bottom:1.25rem;">
         <div style="font-family:var(--font-headline);font-size:1.05rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;" id="splitModalType">
           CLASSIFICATION TYPE
         </div>
@@ -250,13 +277,94 @@
         <p style="font-size:0.88rem;color:var(--text-secondary);margin-top:0.5rem;line-height:1.6;" id="splitModalReason">
           Classifier explanation will appear here.
         </p>
-        <div class="why-not-box" id="splitWhyNotBox" style="display:none;">
+
+        <!-- AI Resolution Reconciliation Box -->
+        <div class="resolution-box" id="splitResolutionBox" style="margin-top:0.85rem;">
+          <div class="resolution-label">🤖 AI Reconciliation Recommendation</div>
+          <div class="resolution-text" id="splitResolutionText">Loading recommendation…</div>
+        </div>
+
+        <div class="why-not-box" id="splitWhyNotBox" style="display:none;margin-top:0.75rem;">
           <div class="why-not-label">ℹ Why this isn't a true contradiction</div>
           <div class="why-not-text" id="splitWhyNotText"></div>
         </div>
       </div>
 
       <div class="split-view-grid" id="splitModalBody"></div>
+    </div>
+  </div>
+
+  <!-- ── CUSTOM ARTICLE SUBMISSION MODAL ── -->
+  <div class="split-modal-overlay" id="ingestModal" style="display:none;"
+       onclick="if(event.target===this) closeIngestModal()">
+    <div class="split-modal-container" style="max-width:640px;">
+      <div class="split-modal-header">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--teal);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.25rem;">
+            Fast-Track Indexing
+          </div>
+          <div class="split-modal-title">Submit Custom Article / Snippet</div>
+        </div>
+        <button class="close-modal-btn" onclick="closeIngestModal()">✕</button>
+      </div>
+
+      <form id="customIngestForm" onsubmit="handleCustomIngestSubmit(event)" style="display:flex; flex-direction:column; gap:1rem;">
+        <div>
+          <label style="display:block; font-size:0.8rem; font-family:var(--font-mono); color:var(--text-secondary); margin-bottom:0.35rem;">Source Name *</label>
+          <input type="text" id="ingestSourceName" placeholder="e.g. Wall Street Journal, Reuters, Internal Report" required class="modal-input" />
+        </div>
+
+        <div>
+          <label style="display:block; font-size:0.8rem; font-family:var(--font-mono); color:var(--text-secondary); margin-bottom:0.35rem;">Headline / Title *</label>
+          <input type="text" id="ingestTitle" placeholder="e.g. US CPI Inflation print adjusted" required class="modal-input" />
+        </div>
+
+        <div>
+          <label style="display:block; font-size:0.8rem; font-family:var(--font-mono); color:var(--text-secondary); margin-bottom:0.35rem;">Article Content / Raw Snippet *</label>
+          <textarea id="ingestContent" rows="5" placeholder="Paste article text containing metrics or claims..." required class="modal-input" style="resize:vertical;"></textarea>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+          <div>
+            <label style="display:block; font-size:0.75rem; font-family:var(--font-mono); color:var(--text-muted); margin-bottom:0.25rem;">Author (Optional)</label>
+            <input type="text" id="ingestAuthor" placeholder="Author name" class="modal-input" />
+          </div>
+          <div>
+            <label style="display:block; font-size:0.75rem; font-family:var(--font-mono); color:var(--text-muted); margin-bottom:0.25rem;">URL (Optional)</label>
+            <input type="url" id="ingestUrl" placeholder="https://..." class="modal-input" />
+          </div>
+        </div>
+
+        <div id="ingestFeedback" style="display:none; font-family:var(--font-mono); font-size:0.8rem; padding:0.6rem; border-radius:4px;"></div>
+
+        <button type="submit" class="nav-btn-dark" id="ingestSubmitBtn" style="padding:0.65rem 1.25rem; font-size:0.88rem; align-self:flex-end;">
+          ⚡ Index Article
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── INGESTION STATUS MODAL ── -->
+  <div class="split-modal-overlay" id="statusModal" style="display:none;"
+       onclick="if(event.target===this) closeStatusModal()">
+    <div class="split-modal-container" style="max-width:680px;">
+      <div class="split-modal-header">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--teal);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.25rem;">
+            Vector & DB Health
+          </div>
+          <div class="split-modal-title">Source Ingestion Status</div>
+        </div>
+        <button class="close-modal-btn" onclick="closeStatusModal()">✕</button>
+      </div>
+
+      <div id="statusModalBody" style="font-family:var(--font-mono); font-size:0.82rem;">
+        Loading ingestion status…
+      </div>
+
+      <div style="margin-top:1.5rem; text-align:right;">
+        <button type="button" class="nav-btn-outline" onclick="triggerManualPoll(this)">🔄 Trigger Ingestion Poll</button>
+      </div>
     </div>
   </div>
 
