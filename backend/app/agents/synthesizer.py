@@ -122,14 +122,19 @@ def run_synthesizer_agent(
             "raw_text": f"{rec.get('source_name')} claims {rec.get('predicate')} = {rec.get('value')}",
         })
 
+    # If no vector or graph results passed CRAG evaluation, return 0 candidate groups
+    if not vector_results and not graph_results:
+        logger.info("Synthesizer Agent: No evaluated chunks passed CRAG filter. Returning 0 candidate groups.")
+        return []
+
     # Filter by query relevance if specific entity searched
     query_low = query.lower()
     target_entity = None
-    if "gdp" in query_low:
+    if "gdp" in query_low or "growth" in query_low:
         target_entity = "US GDP Growth"
-    elif "fed" in query_low or "interest rate" in query_low or "benchmark" in query_low:
+    elif "fed" in query_low or "interest rate" in query_low or "benchmark" in query_low or "fomc" in query_low:
         target_entity = "Federal Funds Rate"
-    elif "cpi" in query_low or "inflation" in query_low or "pce" in query_low:
+    elif "cpi" in query_low or "inflation" in query_low or "pce" in query_low or "price" in query_low:
         target_entity = "US Inflation Rate"
 
     candidate_groups = []
@@ -141,8 +146,12 @@ def run_synthesizer_agent(
                     "claims": claims,
                 })
 
-    # Fallback if target entity filter yielded 0, return all groups with >= 2 claims
-    if not candidate_groups and grouped_claims:
+    # Only apply fallback if query actually contained financial or economic intent
+    has_economic_terms = any(term in query_low for term in [
+        "cpi", "pce", "inflation", "gdp", "fed", "rate", "interest", "price", "economy", "growth", "employment", "jobs"
+    ])
+    
+    if not candidate_groups and grouped_claims and has_economic_terms:
         for entity, claims in grouped_claims.items():
             if len(claims) >= 2:
                 candidate_groups.append({

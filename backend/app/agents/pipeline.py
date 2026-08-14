@@ -60,6 +60,19 @@ async def run_omni_pipeline(query: str, top_k: int = 10) -> QueryResponse:
         f"Raw {crag_metrics['raw_count']} → Refined {crag_metrics['refined_count']} chunks"
     )
 
+    # Fast-exit if query was low-intent or zero chunks passed relevance threshold
+    if crag_metrics['action'] in ("LOW_INTENT_SKIPPED", "LOW_RELEVANCE_REJECTED"):
+        steps.append("   ⚠ CRAG Evaluator: Query is conversational or out-of-scope. Bypassing contradiction synthesis.")
+        steps.append("   ✓ 0 contradictions generated for low-intent query.")
+        return QueryResponse(
+            query=query,
+            contradictions=[],
+            graph=GraphData(nodes=[], edges=[]),
+            steps=steps,
+            cached=False,
+            demo_mode=settings.demo_mode,
+        )
+
     # Node 3: Graph Agent (await the background task, handle errors gracefully)
     steps.append("3. Graph Agent: Querying Neo4j entity graph...")
     try:

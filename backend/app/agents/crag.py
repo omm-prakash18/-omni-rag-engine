@@ -22,15 +22,26 @@ settings = get_settings()
 
 def _score_chunk_relevance(query: str, chunk: Dict[str, Any]) -> float:
     """Evaluate relevance of a retrieved chunk against the query [0.0 to 1.0]."""
+    query_clean = query.strip().lower()
+    
+    # Conversational / low-intent guardrail
+    conversational = {"hi", "hello", "hey", "test", "demo", "ok", "a", "an", "the", "who", "what"}
+    if query_clean in conversational or len(query_clean) < 3:
+        return 0.0
+
     query_terms = [t.lower() for t in re.findall(r"\w+", query) if len(t) > 2]
     if not query_terms:
-        return 0.5
+        return 0.0
 
     raw_text = (chunk.get("raw_text", "") + " " + chunk.get("title", "")).lower()
     matches = sum(1 for term in query_terms if term in raw_text)
     
     term_ratio = matches / len(query_terms)
-    vector_score = chunk.get("score", 0.5)
+    vector_score = chunk.get("score", 0.0)
+
+    # If zero terms matched and vector similarity is weak (<0.15), score is 0.0
+    if matches == 0 and vector_score < 0.15:
+        return 0.0
 
     # Weighted combination of vector cosine similarity & term overlap
     combined_score = (vector_score * 0.4) + (term_ratio * 0.6)
@@ -56,7 +67,7 @@ Query: "{query}"
             )
             expanded = response.text.strip()
             if expanded:
-                logger.info("CRAG LLM Query Rewriter expanded '%s' \u2192 '%s'", query, expanded)
+                logger.info("CRAG LLM Query Rewriter expanded '%s' → '%s'", query, expanded)
                 return expanded
         except Exception as e:
             logger.warning("CRAG LLM Query Rewriter failed (%s), falling back to dictionary.", e)
@@ -84,6 +95,21 @@ def run_crag_agent(query: str, raw_chunks: List[Dict[str, Any]]) -> Tuple[List[D
     Executes Corrective RAG evaluation and filtering over raw retrieved chunks.
     Returns: (refined_chunks, crag_metrics)
     """
+    query_clean = query.strip().lower()
+    conversational = {"hi", "hello", "hey", "test", "demo", "ok", "a", "an", "the", "who", "what"}
+
+    # Guardrail check for low-intent query
+    if query_clean in conversational or len(query_clean) < 3:
+        logger.info("CRAG Agent: Low-intent / conversational query detected ('%s'). Skipping retrieval.", query)
+        metrics = {
+            "action": "LOW_INTENT_SKIPPED",
+            "avg_relevance": 0.0,
+            "raw_count": len(raw_chunks),
+            "refined_count": 0,
+            "confidence": "REJECTED",
+        }
+        return [], metrics
+
     logger.info("CRAG Agent: Evaluating %d raw retrieved chunks...", len(raw_chunks))
 
     evaluated_chunks = []
@@ -93,8 +119,8 @@ def run_crag_agent(query: str, raw_chunks: List[Dict[str, Any]]) -> Tuple[List[D
         rel_score = _score_chunk_relevance(query, chunk)
         total_score += rel_score
         
-        # Only keep chunks above quality threshold (0.25)
-        if rel_score >= 0.25:
+        # Quality threshold: only keep chunks above relevance score 0.30
+        if rel_score >= 0.30:
             c = dict(chunk)
             c["crag_score"] = rel_score
             evaluated_chunks.append(c)
@@ -103,7 +129,10 @@ def run_crag_agent(query: str, raw_chunks: List[Dict[str, Any]]) -> Tuple[List[D
     action = "CORRECT_PASS"
 
     # Trigger Corrective Actions based on retrieval confidence score
-    if avg_relevance < 0.40 or len(evaluated_chunks) < 2:
+    if avg_relevance < 0.25 and len(evaluated_chunks) == 0:
+        action = "LOW_RELEVANCE_REJECTED"
+        logger.warning("CRAG Triggered: Query '%s' yielded 0 relevant chunks (avg relevance %.2f).", query, avg_relevance)
+    elif avg_relevance < 0.40 or len(evaluated_chunks) < 2:
         action = "CORRECTIVE_REWRITE_AND_EXPAND"
         expanded_query = _rewrite_search_query(query)
         logger.warning("CRAG Triggered: Retrieval confidence low (%.2f). Executing Corrective Query Expansion.", avg_relevance)
@@ -128,7 +157,8 @@ def run_crag_agent(query: str, raw_chunks: List[Dict[str, Any]]) -> Tuple[List[D
                 "raw_text": payload.get("raw_text", ""),
                 "crag_score": 0.65,
             }
-            if not any(c["chunk_id"] == fb_chunk["chunk_id"] for c in evaluated_chunks):
+            fb_score = _score_chunk_relevance(query, fb_chunk)
+            if fb_score >= 0.35 and not any(c["chunk_id"] == fb_chunk["chunk_id"] for c in evaluated_chunks):
                 evaluated_chunks.append(fb_chunk)
 
     # Sort by CRAG score descending
@@ -139,7 +169,7 @@ def run_crag_agent(query: str, raw_chunks: List[Dict[str, Any]]) -> Tuple[List[D
         "avg_relevance": round(avg_relevance, 2),
         "raw_count": len(raw_chunks),
         "refined_count": len(evaluated_chunks),
-        "confidence": "HIGH" if avg_relevance > 0.6 else "CORRECTED",
+        "confidence": "HIGH" if avg_relevance > 0.6 else ("CORRECTED" if evaluated_chunks else "REJECTED"),
     }
 
     logger.info("CRAG Agent Complete: Action=%s, Raw=%d → Refined=%d", action, len(raw_chunks), len(evaluated_chunks))
