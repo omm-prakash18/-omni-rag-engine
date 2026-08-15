@@ -85,9 +85,11 @@ Return ONLY the final expanded query string.
 
 Query: "{query}"
 """
+            from google.genai import types
             response = client.models.generate_content(
                 model=settings.llm_model,
                 contents=prompt,
+                config=types.GenerateContentConfig(max_output_tokens=100),
             )
             expanded = response.text.strip()
             if expanded:

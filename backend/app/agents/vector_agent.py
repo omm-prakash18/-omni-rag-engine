@@ -47,9 +47,9 @@ def _cross_encoder_rerank(query: str, chunks: List[Dict[str, Any]]) -> List[Dict
     return chunks
 
 
-def run_vector_agent(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
+def run_vector_agent(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """Embed query and perform hybrid semantic + keyword search with Reciprocal Rank Fusion (RRF) & Reranking."""
-    logger.info("Vector Agent: executing hybrid search & reranking for '%s'", query)
+    logger.info("Vector Agent: executing hybrid search & reranking for '%s' (top_k=%d)", query, top_k)
     
     # Query Expansion for metric comparisons
     search_query = query
@@ -64,10 +64,10 @@ def run_vector_agent(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
     # 1. Embed query
     query_vector = generate_embedding(search_query)
     
-    # 2. Retrieve dense and keyword matches (retrieve top-20 for reranking)
+    # 2. Retrieve dense and keyword matches (retrieve top-10 for reranking)
     from app.services.qdrant_store import keyword_search
-    dense_results = search_chunks(query_vector, top_k=20, score_threshold=0.05, query_text=search_query)
-    keyword_results = keyword_search(search_query, top_k=20)
+    dense_results = search_chunks(query_vector, top_k=10, score_threshold=0.05, query_text=search_query)
+    keyword_results = keyword_search(search_query, top_k=10)
     
     # 3. Reciprocal Rank Fusion (RRF)
     rrf_scores: Dict[str, float] = {}
@@ -89,7 +89,7 @@ def run_vector_agent(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
     
     # Format candidates
     candidates = []
-    for cid in sorted_ids[:20]:
+    for cid in sorted_ids[:10]:
         r = id_to_result[cid]
         payload = r.get("payload", {})
         candidates.append({
@@ -106,7 +106,7 @@ def run_vector_agent(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
             "raw_text": payload.get("raw_text", ""),
         })
 
-    # 4. Rerank top 20 candidates down to top_k
+    # 4. Rerank candidates down to top_k
     reranked_chunks = _cross_encoder_rerank(query, candidates)
     final_chunks = reranked_chunks[:top_k]
 

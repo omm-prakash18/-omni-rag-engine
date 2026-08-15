@@ -137,7 +137,7 @@ async def run_graph_agent(query: str) -> List[Dict[str, Any]]:
         "Graph Agent: sending Cypher to Neo4j | keywords=%s | template: %s",
         keywords, _CYPHER_TEMPLATE,
     )
-    graph_results = await query_subgraph(keywords, limit=30)
+    graph_results = await query_subgraph(keywords, limit=15)
 
     if len(graph_results) == 0:
         logger.warning(

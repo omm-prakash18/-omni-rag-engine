@@ -1,11 +1,13 @@
 """
 app/agents/classifier.py — Node 4: Contradiction Classifier (CORE IP).
 
-Classifies conflicts between two differing claims into taxonomy:
+Classifies conflicts between differing claims into 4-type taxonomy:
 1. direct_contradiction — same entity, same metric, same scope, different value
 2. stale — one claim's published_at is much older, likely superseded
 3. scope_mismatch — different date range, geography, or scope
-4. methodology_mismatch — explicitly different calculation method stated (e.g., chained CPI vs spot shelter indexing, Core PCE vs Headline CPI)
+4. methodology_mismatch — explicitly different calculation method stated
+
+Optimized with Entity-Group LLM Batching, Structured Output (JSON), and explicit max_tokens.
 """
 from __future__ import annotations
 
@@ -21,58 +23,10 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-def _llm_classify_pair(
+def _rule_based_classify_pair(
     entity: str, claim_a: Dict[str, Any], claim_b: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Call Gemini LLM to classify conflict type between claim A and claim B."""
-    prompt = f"""
-You are an expert financial and news contradiction classifier.
-Analyze these two claims about '{entity}' and classify their conflict type into EXACTLY one category:
-- direct_contradiction: Same metric, same scope, same time period, directly contradictory values.
-- stale: One claim is significantly older than the other and has been superseded.
-- scope_mismatch: Claims cover different date ranges (e.g. Q1 2024 vs Q4 2023), geographies, or population scopes.
-- methodology_mismatch: Claims use different calculation methods, indexes, or economic models (e.g. CPI vs PCE, headline vs core, BLS model vs spot market rent, chained CPI).
-
-Claim A:
-- Source: {claim_a['source_name']}
-- Date: {claim_a.get('published_at')}
-- Value: {claim_a['value']}
-- Scope: {claim_a.get('claimed_scope')}
-- Text: "{claim_a['raw_text']}"
-
-Claim B:
-- Source: {claim_b['source_name']}
-- Date: {claim_b.get('published_at')}
-- Value: {claim_b['value']}
-- Scope: {claim_b.get('claimed_scope')}
-- Text: "{claim_b['raw_text']}"
-
-Return ONLY valid JSON matching this schema:
-{{
-  "contradiction_type": "direct_contradiction | stale | scope_mismatch | methodology_mismatch",
-  "reason": "Detailed concise explanation of why this category was chosen",
-  "ai_resolution": "Actionable 1-2 sentence recommendation for an analyst on how to reconcile these figures",
-  "confidence": 0.95
-}}
-"""
-    logger.info("Classifier Agent: LLM prompt being sent for entity '%s':\n%s", entity, prompt)
-
-    if not settings.demo_mode:
-        try:
-            from google import genai as google_genai
-            client = google_genai.Client(api_key=settings.gemini_api_key)
-            resp = client.models.generate_content(
-                model=settings.llm_model,
-                contents=prompt,
-            )
-            raw = resp.text.strip()
-            if "```json" in raw:
-                raw = raw.split("```json")[1].split("```")[0].strip()
-            return json.loads(raw)
-        except Exception as e:
-            logger.warning("Gemini classification call failed (%s), using rule-based fallback.", e)
-
-    # Heuristic Rule-Based Classifier Fallback
+    """Heuristic Rule-Based Classifier for claim pair conflict analysis."""
     text_a = claim_a["raw_text"].lower()
     text_b = claim_b["raw_text"].lower()
     val_a = claim_a["value"]
@@ -141,19 +95,83 @@ Return ONLY valid JSON matching this schema:
     }
 
 
+def _llm_classify_entity_batch(
+    entity: str, pairs: List[tuple[Dict[str, Any], Dict[str, Any]]]
+) -> List[Dict[str, Any]]:
+    """
+    Batches all conflicting claim pairs for an entity into ONE single structured LLM call.
+    """
+    if not pairs:
+        return []
+
+    if settings.demo_mode or not settings.gemini_api_key:
+        return [_rule_based_classify_pair(entity, ca, cb) for ca, cb in pairs]
+
+    pairs_text = []
+    for idx, (ca, cb) in enumerate(pairs, 1):
+        pairs_text.append(
+            f"Pair {idx}:\n"
+            f"  Claim A ({ca['source_name']}): Value={ca['value']}, Date={ca.get('published_at')}, Scope={ca.get('claimed_scope')}, Text=\"{ca['raw_text']}\"\n"
+            f"  Claim B ({cb['source_name']}): Value={cb['value']}, Date={cb.get('published_at')}, Scope={cb.get('claimed_scope')}, Text=\"{cb['raw_text']}\"\n"
+        )
+
+    prompt = f"""
+You are an expert financial contradiction classifier.
+Analyze the following conflicting claim pairs for entity '{entity}'.
+Classify each pair into EXACTLY one category: direct_contradiction, stale, scope_mismatch, or methodology_mismatch.
+
+{"".join(pairs_text)}
+
+Return a JSON array where each item corresponds to Pair 1..{len(pairs)} in order:
+[
+  {{
+    "contradiction_type": "direct_contradiction | stale | scope_mismatch | methodology_mismatch",
+    "reason": "Concise rationale",
+    "ai_resolution": "Actionable analyst recommendation",
+    "confidence": 0.95
+  }}
+]
+"""
+    logger.info("Classifier Agent: Sending single batched LLM call for %d pairs (entity '%s')", len(pairs), entity)
+
+    try:
+        from google import genai as google_genai
+        from google.genai import types
+        client = google_genai.Client(api_key=settings.gemini_api_key)
+        resp = client.models.generate_content(
+            model=settings.llm_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=300,
+                response_mime_type="application/json"
+            )
+        )
+        raw = resp.text.strip()
+        parsed = json.loads(raw)
+        if isinstance(parsed, list) and len(parsed) == len(pairs):
+            return parsed
+    except Exception as e:
+        logger.warning("Gemini batched classification call failed (%s), using rule-based fallback.", e)
+
+    return [_rule_based_classify_pair(entity, ca, cb) for ca, cb in pairs]
+
+
 def run_classifier_agent(candidate_groups: List[Dict[str, Any]]) -> List[Contradiction]:
-    """Run contradiction classifier over candidate claim groups."""
-    logger.info("Classifier Agent: evaluating %d candidate groups", len(candidate_groups))
-    logger.info("Classifier Agent: exact input candidate_groups = %s", json.dumps(candidate_groups, default=str))
-    
+    """
+    Executes contradiction classification on candidate claim groups.
+    Skips processing immediately if zero candidate groups contain conflicting claim pairs across sources.
+    """
+    if not candidate_groups:
+        logger.info("Classifier Agent: 0 candidate groups provided. Early exiting with 0 contradictions.")
+        return []
+
     contradictions: List[Contradiction] = []
 
     for group in candidate_groups:
         entity = group["entity"]
         claims = group["claims"]
 
-        # Deduplicate claims by source_name per entity group.
-        # This keeps the highest scoring / most recent claim per source.
+        # Deduplicate claims by source_name per entity group
         unique_claims: Dict[str, Dict[str, Any]] = {}
         for c in claims:
             src_name = c.get("source_name", "Unknown")
@@ -165,64 +183,64 @@ def run_classifier_agent(candidate_groups: List[Dict[str, Any]]) -> List[Contrad
                 new_score = c.get("crag_score") or c.get("score") or 0.0
                 if new_score > existing_score:
                     unique_claims[src_name] = c
-                    
-        deduped_claims = list(unique_claims.values())
-        logger.info(
-            "Classifier Agent (group '%s'): deduplicated %d raw claims down to %d unique sources",
-            entity, len(claims), len(deduped_claims)
-        )
 
-        # Pairwise comparison across sources in group
+        deduped_claims = list(unique_claims.values())
+        if len(deduped_claims) < 2:
+            continue
+
+        # Collect conflicting pairs
+        conflicting_pairs = []
         for i in range(len(deduped_claims)):
             for j in range(i + 1, len(deduped_claims)):
                 ca = deduped_claims[i]
                 cb = deduped_claims[j]
+                if ca.get("source_name") != cb.get("source_name") and ca["value"] != cb["value"]:
+                    conflicting_pairs.append((ca, cb))
 
-                # Skip if from the same source
-                if ca.get("source_name") == cb.get("source_name"):
-                    continue
-                # Skip if values are identical
-                if ca["value"] == cb["value"]:
-                    continue
+        if not conflicting_pairs:
+            logger.info("Classifier Agent: Entity '%s' has 0 conflicting claim pairs across sources.", entity)
+            continue
 
-                res = _llm_classify_pair(entity, ca, cb)
+        # Batch LLM classification for entity group
+        results = _llm_classify_entity_batch(entity, conflicting_pairs)
 
-                src_ref_a = SourceRef(
-                    chunk_id=ca["chunk_id"],
-                    source_name=ca["source_name"],
-                    author=ca.get("author"),
-                    published_at=ca.get("published_at"),
-                    excerpt=ca["raw_text"][:200] + "..." if len(ca["raw_text"]) > 200 else ca["raw_text"],
-                    url=ca.get("url"),
-                    sentiment=ca.get("sentiment"),
-                    claimed_scope=ca.get("claimed_scope"),
+        for (ca, cb), res in zip(conflicting_pairs, results):
+            src_ref_a = SourceRef(
+                chunk_id=ca["chunk_id"],
+                source_name=ca["source_name"],
+                author=ca.get("author"),
+                published_at=ca.get("published_at"),
+                excerpt=ca["raw_text"][:200] + "..." if len(ca["raw_text"]) > 200 else ca["raw_text"],
+                url=ca.get("url"),
+                sentiment=ca.get("sentiment"),
+                claimed_scope=ca.get("claimed_scope"),
+            )
+            src_ref_b = SourceRef(
+                chunk_id=cb["chunk_id"],
+                source_name=cb["source_name"],
+                author=cb.get("author"),
+                published_at=cb.get("published_at"),
+                excerpt=cb["raw_text"][:200] + "..." if len(cb["raw_text"]) > 200 else cb["raw_text"],
+                url=cb.get("url"),
+                sentiment=cb.get("sentiment"),
+                claimed_scope=cb.get("claimed_scope"),
+            )
+
+            c_type = ContradictionType(res["contradiction_type"])
+
+            contradictions.append(
+                Contradiction(
+                    id=str(uuid.uuid4()),
+                    entity=entity,
+                    metric=ca["value"] + " vs " + cb["value"],
+                    contradiction_type=c_type,
+                    reason=res["reason"],
+                    ai_resolution=res.get("ai_resolution"),
+                    confidence=res.get("confidence", 0.9),
+                    source_a=src_ref_a,
+                    source_b=src_ref_b,
                 )
-                src_ref_b = SourceRef(
-                    chunk_id=cb["chunk_id"],
-                    source_name=cb["source_name"],
-                    author=cb.get("author"),
-                    published_at=cb.get("published_at"),
-                    excerpt=cb["raw_text"][:200] + "..." if len(cb["raw_text"]) > 200 else cb["raw_text"],
-                    url=cb.get("url"),
-                    sentiment=cb.get("sentiment"),
-                    claimed_scope=cb.get("claimed_scope"),
-                )
+            )
 
-                c_type = ContradictionType(res["contradiction_type"])
-
-                contradictions.append(
-                    Contradiction(
-                        id=str(uuid.uuid4()),
-                        entity=entity,
-                        metric=ca["value"] + " vs " + cb["value"],
-                        contradiction_type=c_type,
-                        reason=res["reason"],
-                        ai_resolution=res.get("ai_resolution"),
-                        confidence=res.get("confidence", 0.9),
-                        source_a=src_ref_a,
-                        source_b=src_ref_b,
-                    )
-                )
-
-    logger.info("Classifier Agent: identified %d total contradictions", len(contradictions))
+    logger.info("Classifier Agent: identified %d total active contradictions", len(contradictions))
     return contradictions

@@ -81,6 +81,7 @@ class QueryResponse(BaseModel):
     query: str
     contradictions: List[Contradiction] = []
     graph: GraphData = GraphData()
+    consensus_summary: Optional[Dict[str, Any]] = None
     steps: List[str] = []          # agent reasoning trace
     cached: bool = False
     demo_mode: bool = False        # True when no real API key configured

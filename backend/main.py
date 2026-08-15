@@ -105,6 +105,9 @@ app.add_middleware(
 app.include_router(query.router)
 app.include_router(ingest.router)
 app.include_router(ws.router)
+app.include_router(flags.router)
+app.include_router(topics.router)
+app.include_router(external_api.router)
 
 # No-cache headers helper
 _NO_CACHE_HEADERS = {
