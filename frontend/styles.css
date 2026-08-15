@@ -40,8 +40,8 @@
   --sage-dark:   #C87870;
 
   /* ── Fonts ── */
-  --font-headline: 'Inter', sans-serif;
-  --font-body:     'Inter', sans-serif;
+  --font-headline: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body:     'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono:     'JetBrains Mono', monospace;
 
   /* ── Layout ── */
@@ -65,8 +65,11 @@ body {
   background-attachment: fixed;
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 16px;
-  line-height: 1.6;
+  font-size: 15.5px;
+  line-height: 1.65;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
 }
 
@@ -181,8 +184,8 @@ a { text-decoration: none; color: inherit; }
 
 .nav-logo {
   display: flex; align-items: center; gap: 0.5rem;
-  font-family: var(--font-headline); font-weight: 700;
-  font-size: 1.15rem; letter-spacing: -0.01em; white-space: nowrap;
+  font-family: var(--font-headline); font-weight: 800;
+  font-size: 1.2rem; letter-spacing: -0.03em; white-space: nowrap;
   color: var(--text-primary);
 }
 .logo-icon   { color: var(--teal); font-size: 1.25rem; filter: drop-shadow(0 0 8px var(--teal-glow)); }
@@ -286,15 +289,17 @@ a { text-decoration: none; color: inherit; }
 
 .search-input-wrap input {
   flex: 1; background: transparent; border: none; outline: none;
-  color: var(--text-primary); font-family: var(--font-body); font-size: 0.9rem;
+  color: var(--text-primary); font-family: var(--font-body); font-size: 0.95rem;
+  font-weight: 500; letter-spacing: -0.01em;
 }
-.search-input-wrap input::placeholder { color: var(--text-muted); }
+.search-input-wrap input::placeholder { color: var(--text-muted); font-weight: 400; }
 
 .search-btn {
   background: var(--teal); color: #FAF7F3;
   border: 1px solid rgba(255,255,255,0.4);
-  padding: 0.55rem 1.25rem; border-radius: 6px;
-  font-weight: 600; font-size: 0.85rem;
+  padding: 0.58rem 1.35rem; border-radius: 6px;
+  font-family: var(--font-headline); font-weight: 600; font-size: 0.82rem;
+  text-transform: uppercase; letter-spacing: 0.03em;
   box-shadow: 0 4px 15px rgba(214,159,151,0.35);
   display: flex; align-items: center; gap: 0.4rem;
 }
