@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import cleanup_expired_cache, shutdown as db_shutdown, startup as db_startup
-from app.routers import ingest, query, ws
+from app.routers import external_api, flags, ingest, query, topics, ws
 from app.services.ingestion import run_ingestion_pipeline
 
 # Configure Logging
