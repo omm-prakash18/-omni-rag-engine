@@ -44,7 +44,14 @@ async def execute_query(req: QueryRequest):
             return QueryResponse(**data)
 
         # Run pipeline
-        response = await run_omni_pipeline(query=req.query, top_k=req.top_k)
+        response = await run_omni_pipeline(
+            query=req.query,
+            top_k=req.top_k,
+            preferences=req.preferences,
+            history=req.history,
+            conversation_id=req.conversation_id,
+            user_id=req.user_id,
+        )
         response.demo_mode = settings.demo_mode
 
         # Save to cache

@@ -132,3 +132,45 @@ class ApiKey(Base):
     rate_limit_per_min: Mapped[int] = mapped_column(Integer, default=60)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# ── 7. User Interactions (Personalized Ranking Signal) ──────────────────────
+class UserInteraction(Base):
+    """Tracks user clicks & feedback on candidate chunks to personalize ranking signal."""
+
+    __tablename__ = "user_interactions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    chunk_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    query: Mapped[str] = mapped_column(String(500), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "click" | "helpful" | "flag"
+    score_delta: Mapped[float] = mapped_column(Float, default=0.1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# ── 8. Hierarchical RAG Document Summaries ──────────────────────────────────
+class DocumentSummary(Base):
+    """Document-level summary for long-form sources before chunking."""
+
+    __tablename__ = "document_summaries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    source_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# ── 9. Source Retractions & Freshness Tracking ──────────────────────────────
+class SourceRetraction(Base):
+    """Tracks retractions, revisions, and stale updates across ingested feeds."""
+
+    __tablename__ = "source_retractions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    source_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    chunk_id: Mapped[Optional[str]] = mapped_column(String(100))
+    retraction_status: Mapped[str] = mapped_column(String(50), nullable=False)  # "active" | "retracted" | "updated"
+    reason: Mapped[Optional[str]] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

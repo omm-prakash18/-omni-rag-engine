@@ -19,6 +19,13 @@ class ContradictionType(str, Enum):
 
 
 # ── Chunk / Source references ─────────────────────────────────────────────────
+# ── Chat & Conversational Memory Schemas ─────────────────────────────────────
+class ChatMessage(BaseModel):
+    role: str = Field(pattern="^(user|assistant|system)$")  # "user" | "assistant" | "system"
+    content: str = Field(min_length=1, max_length=2000)
+
+
+# ── Chunk / Source references ─────────────────────────────────────────────────
 class SourceRef(BaseModel):
     chunk_id: str
     source_name: str
@@ -28,6 +35,7 @@ class SourceRef(BaseModel):
     url: Optional[str] = None
     sentiment: Optional[float] = None
     claimed_scope: Optional[Dict[str, Any]] = None
+    retrieval_explanation: Optional[Dict[str, Any]] = None  # Explainable Retrieval score breakdown
 
 
 # ── Contradiction ─────────────────────────────────────────────────────────────
@@ -86,14 +94,21 @@ class QueryRequest(BaseModel):
     query: str = Field(min_length=3, max_length=500)
     filters: Optional[QueryFilters] = None
     preferences: Optional[UserPreferences] = None
+    conversation_id: Optional[str] = None              # Conversational Memory session ID
+    history: Optional[List[ChatMessage]] = None         # Multi-turn conversation history
+    user_id: Optional[str] = None                      # User ID for personalized interaction ranking
     top_k: int = Field(default=10, ge=1, le=50)
 
 
 class QueryResponse(BaseModel):
     query: str
+    resolved_query: Optional[str] = None               # Conversational memory resolved query
+    multi_hop_subqueries: Optional[List[str]] = None   # Multi-hop subquery decomposition
     contradictions: List[Contradiction] = []
     graph: GraphData = GraphData()
     consensus_summary: Optional[Dict[str, Any]] = None
+    retry_efficacy: Optional[Dict[str, Any]] = None     # Self-correcting retry loop efficacy tracking
+    detected_language: Optional[str] = "en"            # Cross-lingual detection
     warnings: List[str] = []       # Warnings if narrow user preferences drop context coverage
     steps: List[str] = []          # agent reasoning trace
     cached: bool = False

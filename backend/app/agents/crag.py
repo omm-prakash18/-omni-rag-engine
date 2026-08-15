@@ -196,12 +196,29 @@ def run_crag_agent(query: str, raw_chunks: List[Dict[str, Any]]) -> Tuple[List[D
     # Sort by CRAG score descending
     evaluated_chunks.sort(key=lambda x: x.get("crag_score", 0.0), reverse=True)
 
+    # Feature 2: Self-Correcting Retry Efficacy Tracking
+    retry_efficacy = None
+    if action == "CORRECTIVE_REWRITE_AND_EXPAND":
+        post_count = len(evaluated_chunks)
+        post_total = sum(c.get("crag_score", 0.0) for c in evaluated_chunks)
+        post_avg = (post_total / post_count) if post_count else 0.0
+        did_help = post_count > 0 and (post_avg >= avg_relevance or post_count > len(raw_chunks))
+        retry_efficacy = {
+            "retried": True,
+            "pre_retry_avg_score": round(avg_relevance, 2),
+            "post_retry_avg_score": round(post_avg, 2),
+            "pre_retry_chunk_count": len(raw_chunks),
+            "post_retry_chunk_count": post_count,
+            "did_retry_help": did_help,
+        }
+
     metrics = {
         "action": action,
         "avg_relevance": round(avg_relevance, 2),
         "raw_count": len(raw_chunks),
         "refined_count": len(evaluated_chunks),
         "confidence": "HIGH" if avg_relevance > 0.6 else ("CORRECTED" if evaluated_chunks else "REJECTED"),
+        "retry_efficacy": retry_efficacy,
     }
 
     logger.info("CRAG Agent Complete: Action=%s, Raw=%d → Refined=%d", action, len(raw_chunks), len(evaluated_chunks))

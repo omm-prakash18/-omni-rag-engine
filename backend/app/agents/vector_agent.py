@@ -2,7 +2,7 @@
 app/agents/vector_agent.py — Node 1: Vector Agent.
 
 Performs semantic search in Qdrant for chunks relevant to the query.
-Supports Adaptive Retrieval Depth (fast path top-3 vs full top-10 rerank),
+Supports Adaptive Retrieval Depth, Explainable Retrieval Score Breakdown ("Why this chunk was retrieved"),
 Per-User Source Weighting, Recency Bias boost, and Domain Scope metadata filtering.
 """
 from __future__ import annotations
@@ -50,7 +50,7 @@ def _cross_encoder_rerank(
         orig_score = chunk.get("score", 0.0)
         base_rerank = (orig_score * 0.4) + (term_density * 0.6)
 
-        # Part 1.1: Per-user Source Weighting multiplier
+        # Per-user Source Weighting multiplier
         src_name = chunk.get("source_name", "Unknown")
         multiplier = source_weights.get(src_name, 1.0)
         for w_src, w_val in source_weights.items():
@@ -58,13 +58,22 @@ def _cross_encoder_rerank(
                 multiplier = w_val
                 break
 
-        # Part 1.1: Recency Bias boost
+        # Recency Bias boost
         if recency_bias:
             pub_date = str(chunk.get("published_at") or "")
             if "2024" in pub_date or "May" in pub_date:
                 multiplier *= 1.25
 
         chunk["rerank_score"] = round(base_rerank * multiplier, 4)
+
+        # Feature 7: Explainable Retrieval Score Breakdown ("Why this chunk was retrieved")
+        chunk["retrieval_explanation"] = {
+            "rrf_score": chunk.get("score", 0.0),
+            "dense_score": round(orig_score, 4),
+            "keyword_density": round(term_density, 2),
+            "rerank_score": chunk["rerank_score"],
+            "match_reason": f"Matched {matches} query terms in text and title for outlet '{src_name}'",
+        }
 
     chunks.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
     return chunks
@@ -119,7 +128,7 @@ def run_vector_agent(
         r = id_to_result[cid]
         payload = r.get("payload", {})
 
-        # Part 1.1 Domain Scope Metadata Filter
+        # Domain Scope Metadata Filter
         if preferences and preferences.domain_scope:
             scope_raw = str(payload.get("claimed_scope") or "").lower()
             if not any(d.lower() in scope_raw or d.lower() in query_low for d in preferences.domain_scope):
@@ -137,6 +146,10 @@ def run_vector_agent(
             "sentiment": payload.get("sentiment"),
             "claimed_scope": payload.get("claimed_scope", {}),
             "raw_text": payload.get("raw_text", ""),
+            "retrieval_explanation": {
+                "rrf_score": round(rrf_scores[cid], 4),
+                "match_reason": f"Hybrid dense/keyword match in Qdrant store",
+            },
         })
 
     if is_fast_path or not candidates:
