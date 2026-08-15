@@ -54,4 +54,4 @@ async def execute_query(req: QueryRequest):
 
     except Exception as e:
         logger.error("Error executing query '%s': %s", req.query, e, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error processing query.")

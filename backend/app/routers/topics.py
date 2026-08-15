@@ -51,6 +51,16 @@ class TopicAlertResponse(BaseModel):
 @router.post("", response_model=TrackedTopicResponse, status_code=status.HTTP_201_CREATED)
 async def create_tracked_topic(payload: TrackedTopicCreate, db: AsyncSession = Depends(get_db)):
     """Save a new topic for background change tracking."""
+    # Enforce limit of 10 active tracked topics max to prevent background run flooding
+    count_stmt = select(TrackedTopic).where(TrackedTopic.active == True)
+    res = await db.execute(count_stmt)
+    existing_count = len(res.scalars().all())
+    if existing_count >= 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum limit of 10 active tracked topics reached. Delete an existing topic before adding new ones.",
+        )
+
     topic = TrackedTopic(
         topic_name=payload.topic_name,
         interval_minutes=payload.interval_minutes,

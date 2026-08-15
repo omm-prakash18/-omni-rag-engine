@@ -92,12 +92,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Enable CORS for frontend integration
+# Enable CORS for frontend integration (Strict domain check)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins + ["*"],
-    allow_credentials=False,  # credentials=True is incompatible with wildcard origins
-    allow_methods=["*"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
