@@ -103,6 +103,26 @@
           <button type="button" class="preset-chip" onclick="setPresetQuery('US GDP growth Q1 2024 vs Q4 2023')">US GDP Growth</button>
           <button type="button" class="preset-chip" onclick="setPresetQuery('Core PCE vs Headline CPI rate')">Core PCE vs CPI</button>
         </div>
+
+        <!-- User Preferences Controls (Part 1 Customizations) -->
+        <div class="user-prefs-bar" style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:0.82rem;color:var(--text-secondary);">
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" id="prefRecency" style="accent-color:var(--teal);" />
+            <span>⚡ Recency Bias (2024 Boost)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;">
+            <span>🎯 Confidence Threshold:</span>
+            <input type="range" id="prefThreshold" min="0.0" max="1.0" step="0.1" value="0.0" oninput="document.getElementById('threshLabel').textContent=this.value" style="width:70px;accent-color:var(--teal);" />
+            <span id="threshLabel" style="font-weight:600;">0.0</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;">
+            <span>📄 Depth:</span>
+            <select id="prefDepth" style="background:var(--glass-input);border:1px solid var(--border);border-radius:4px;padding:2px 6px;color:var(--text-primary);font-size:0.8rem;">
+              <option value="full" selected>Full Claims</option>
+              <option value="summary">Short Summary</option>
+            </select>
+          </label>
+        </div>
       </form>
     </div>
 

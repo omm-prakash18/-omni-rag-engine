@@ -318,14 +318,26 @@ async function handleQuerySubmit(event) {
     }
   }
 
+  function getActivePreferences() {
+    const recencyBias = document.getElementById('prefRecency') ? document.getElementById('prefRecency').checked : false;
+    const threshVal = document.getElementById('prefThreshold') ? parseFloat(document.getElementById('prefThreshold').value) : 0.0;
+    const depthVal = document.getElementById('prefDepth') ? document.getElementById('prefDepth').value : 'full';
+    return {
+      recency_bias: recencyBias,
+      contradiction_threshold: threshVal,
+      answer_depth: depthVal,
+    };
+  }
+
   async function triggerRestFetch() {
     if (wsBadgeText) wsBadgeText.textContent = 'REST MODE';
     try {
       const apiHost = isPort8000 ? window.location.origin : 'http://localhost:8000';
+      const prefs = getActivePreferences();
       const resp = await fetch(`${apiHost}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, top_k: 10 }),
+        body: JSON.stringify({ query, preferences: prefs, top_k: 10 }),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
       const data = await resp.json();
@@ -375,7 +387,8 @@ async function handleQuerySubmit(event) {
     activeWebSocket.onopen = () => {
       if (wsTimeout) clearTimeout(wsTimeout);
       if (wsBadgeText) wsBadgeText.textContent = 'WS CONNECTED';
-      activeWebSocket.send(JSON.stringify({ query }));
+      const prefs = getActivePreferences();
+      activeWebSocket.send(JSON.stringify({ query, preferences: prefs }));
     };
 
     activeWebSocket.onmessage = (evt) => {
