@@ -71,9 +71,21 @@ class QueryFilters(BaseModel):
     sources: Optional[List[str]] = None
 
 
+# ── User Preferences (Part 1 Customization) ──────────────────────────────────
+class UserPreferences(BaseModel):
+    source_weights: Optional[Dict[str, float]] = None  # Outlet weight multiplier (e.g. {"Reuters": 1.5, "FT": 0.5})
+    recency_bias: bool = False                          # True = boost recent articles in ranking
+    contradiction_threshold: float = Field(default=0.0, ge=0.0, le=1.0) # Filter threshold for edge rendering
+    domain_scope: Optional[List[str]] = None           # Metadata scope filter (e.g. ["finance", "geopolitics"])
+    answer_depth: str = Field(default="full")           # "full" | "summary"
+    pinned_entities: Optional[List[str]] = None         # Entities always tracked/rendered
+    theme_tokens: Optional[Dict[str, str]] = None       # Custom UI theme tokens (accents, density)
+
+
 class QueryRequest(BaseModel):
     query: str = Field(min_length=3, max_length=500)
     filters: Optional[QueryFilters] = None
+    preferences: Optional[UserPreferences] = None
     top_k: int = Field(default=10, ge=1, le=50)
 
 
@@ -82,6 +94,7 @@ class QueryResponse(BaseModel):
     contradictions: List[Contradiction] = []
     graph: GraphData = GraphData()
     consensus_summary: Optional[Dict[str, Any]] = None
+    warnings: List[str] = []       # Warnings if narrow user preferences drop context coverage
     steps: List[str] = []          # agent reasoning trace
     cached: bool = False
     demo_mode: bool = False        # True when no real API key configured

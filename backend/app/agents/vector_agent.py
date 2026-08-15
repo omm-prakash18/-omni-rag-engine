@@ -2,23 +2,29 @@
 app/agents/vector_agent.py — Node 1: Vector Agent.
 
 Performs semantic search in Qdrant for chunks relevant to the query.
+Supports Adaptive Retrieval Depth (fast path top-3 vs full top-10 rerank),
+Per-User Source Weighting, Recency Bias boost, and Domain Scope metadata filtering.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+from app.schemas.api import UserPreferences
 from app.services.extraction import generate_embedding
 from app.services.qdrant_store import search_chunks
 
 logger = logging.getLogger(__name__)
 
 
-def _cross_encoder_rerank(query: str, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Rerank retrieved chunks using query-chunk term matching and semantic overlap cross-scoring."""
+def _cross_encoder_rerank(
+    query: str,
+    chunks: List[Dict[str, Any]],
+    preferences: Optional[UserPreferences] = None,
+) -> List[Dict[str, Any]]:
+    """Rerank retrieved chunks using query term overlap, source weights, and recency bias."""
     query_terms = [t.lower() for t in query.split() if len(t) > 2]
     
-    # Financial acronym synonym expansion for reranker
     synonyms = {
         "pce": ["personal consumption expenditures", "core pce", "cnbc", "bea", "2.8%"],
         "cpi": ["consumer price index", "headline cpi", "reuters", "bls", "3.2%"],
@@ -30,6 +36,9 @@ def _cross_encoder_rerank(query: str, chunks: List[Dict[str, Any]]) -> List[Dict
         if q_term in synonyms:
             expanded_terms.update(synonyms[q_term])
 
+    source_weights = preferences.source_weights if preferences and preferences.source_weights else {}
+    recency_bias = preferences.recency_bias if preferences else False
+
     for chunk in chunks:
         text = chunk.get("raw_text", "").lower()
         title = (chunk.get("title") or "").lower()
@@ -38,20 +47,41 @@ def _cross_encoder_rerank(query: str, chunks: List[Dict[str, Any]]) -> List[Dict
         matches = sum(1 for term in expanded_terms if term in full_text)
         term_density = matches / max(len(expanded_terms), 1)
         
-        # Boost score using cross-encoder term overlap
         orig_score = chunk.get("score", 0.0)
-        chunk["rerank_score"] = round((orig_score * 0.4) + (term_density * 0.6), 4)
+        base_rerank = (orig_score * 0.4) + (term_density * 0.6)
 
-    # Sort by rerank score descending
+        # Part 1.1: Per-user Source Weighting multiplier
+        src_name = chunk.get("source_name", "Unknown")
+        multiplier = source_weights.get(src_name, 1.0)
+        for w_src, w_val in source_weights.items():
+            if w_src.lower() in src_name.lower():
+                multiplier = w_val
+                break
+
+        # Part 1.1: Recency Bias boost
+        if recency_bias:
+            pub_date = str(chunk.get("published_at") or "")
+            if "2024" in pub_date or "May" in pub_date:
+                multiplier *= 1.25
+
+        chunk["rerank_score"] = round(base_rerank * multiplier, 4)
+
     chunks.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
     return chunks
 
 
-def run_vector_agent(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-    """Embed query and perform hybrid semantic + keyword search with Reciprocal Rank Fusion (RRF) & Reranking."""
-    logger.info("Vector Agent: executing hybrid search & reranking for '%s' (top_k=%d)", query, top_k)
+def run_vector_agent(
+    query: str,
+    top_k: int = 5,
+    preferences: Optional[UserPreferences] = None,
+    is_fast_path: bool = False,
+) -> List[Dict[str, Any]]:
+    """
+    Embed query and perform hybrid semantic + keyword search with Reciprocal Rank Fusion & Reranking.
+    Adaptive depth: fast path retrieves top-3 without heavy reranking.
+    """
+    logger.info("Vector Agent: executing hybrid search for '%s' (top_k=%d, fast_path=%s)", query, top_k, is_fast_path)
     
-    # Query Expansion for metric comparisons
     search_query = query
     query_low = query.lower()
     if "pce" in query_low and "cpi" not in query_low:
@@ -61,15 +91,13 @@ def run_vector_agent(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
     elif "gdp" in query_low:
         search_query = query + " annualized economic growth"
         
-    # 1. Embed query
     query_vector = generate_embedding(search_query)
     
-    # 2. Retrieve dense and keyword matches (retrieve top-10 for reranking)
+    retrieve_limit = 3 if is_fast_path else 10
     from app.services.qdrant_store import keyword_search
-    dense_results = search_chunks(query_vector, top_k=10, score_threshold=0.05, query_text=search_query)
-    keyword_results = keyword_search(search_query, top_k=10)
+    dense_results = search_chunks(query_vector, top_k=retrieve_limit, score_threshold=0.05, query_text=search_query)
+    keyword_results = keyword_search(search_query, top_k=retrieve_limit)
     
-    # 3. Reciprocal Rank Fusion (RRF)
     rrf_scores: Dict[str, float] = {}
     id_to_result: Dict[str, Dict[str, Any]] = {}
     k_constant = 60
@@ -84,14 +112,19 @@ def run_vector_agent(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         id_to_result[cid] = r
         rrf_scores[cid] = rrf_scores.get(cid, 0.0) + (1.0 / (k_constant + rank + 1))
         
-    # Sort by combined RRF score descending
     sorted_ids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
     
-    # Format candidates
     candidates = []
-    for cid in sorted_ids[:10]:
+    for cid in sorted_ids[:retrieve_limit]:
         r = id_to_result[cid]
         payload = r.get("payload", {})
+
+        # Part 1.1 Domain Scope Metadata Filter
+        if preferences and preferences.domain_scope:
+            scope_raw = str(payload.get("claimed_scope") or "").lower()
+            if not any(d.lower() in scope_raw or d.lower() in query_low for d in preferences.domain_scope):
+                continue
+
         candidates.append({
             "chunk_id": cid,
             "score": round(rrf_scores[cid], 4),
@@ -106,10 +139,11 @@ def run_vector_agent(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
             "raw_text": payload.get("raw_text", ""),
         })
 
-    # 4. Rerank candidates down to top_k
-    reranked_chunks = _cross_encoder_rerank(query, candidates)
-    final_chunks = reranked_chunks[:top_k]
+    if is_fast_path or not candidates:
+        final_chunks = candidates[:top_k]
+    else:
+        reranked = _cross_encoder_rerank(query, candidates, preferences=preferences)
+        final_chunks = reranked[:top_k]
 
-    logger.info("Vector Agent: merged %d dense & %d keyword chunks → reranked top-%d chunks", 
-                len(dense_results), len(keyword_results), len(final_chunks))
+    logger.info("Vector Agent: returned top-%d chunks (fast_path=%s)", len(final_chunks), is_fast_path)
     return final_chunks

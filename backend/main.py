@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import cleanup_expired_cache, shutdown as db_shutdown, startup as db_startup
-from app.routers import external_api, flags, ingest, query, topics, ws
+from app.routers import external_api, flags, ingest, query, topics, views, ws
 from app.services.ingestion import run_ingestion_pipeline
 
 # Configure Logging
@@ -107,6 +107,7 @@ app.include_router(ingest.router)
 app.include_router(ws.router)
 app.include_router(flags.router)
 app.include_router(topics.router)
+app.include_router(views.router)
 app.include_router(external_api.router)
 
 # No-cache headers helper

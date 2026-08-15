@@ -11,6 +11,7 @@ app/services/extraction.py — Extraction Service & Dual-Write Pipeline.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import random
@@ -29,44 +30,79 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+# In-memory hash-based embedding cache to prevent re-embedding identical text
+_EMBEDDING_CACHE: Dict[str, List[float]] = {}
+_EMBEDDING_CACHE_HITS: int = 0
+_EMBEDDING_CACHE_MISSES: int = 0
+
+
+def get_embedding_cache_stats() -> Dict[str, int]:
+    return {
+        "cache_size": len(_EMBEDDING_CACHE),
+        "hits": _EMBEDDING_CACHE_HITS,
+        "misses": _EMBEDDING_CACHE_MISSES,
+    }
+
+
 def generate_embedding(text_or_texts: str | List[str]) -> List[float] | List[List[float]]:
     """Generate vector embedding(s) for chunk text(s) using Gemini or mock fallback.
-
-    Args:
-        text_or_texts: A single string or a list of strings to embed.
-
-    Returns:
-        A single 768-d float vector if input was a string,
-        or a list of 768-d vectors if input was a list.
+    Uses an in-memory hash lookup cache to avoid re-embedding identical text.
     """
+    global _EMBEDDING_CACHE_HITS, _EMBEDDING_CACHE_MISSES
+
     is_list = isinstance(text_or_texts, list)
     texts = text_or_texts if is_list else [text_or_texts]
 
-    if not settings.demo_mode:
-        try:
-            from google import genai as google_genai
-            client = google_genai.Client(api_key=settings.gemini_api_key)
-            result = client.models.embed_content(
-                model=settings.embedding_model,
-                contents=texts,
-                config={"output_dimensionality": 768, "task_type": "retrieval_document"},
-            )
-            # result.embeddings is a list of ContentEmbedding objects
-            raw = [e.values for e in result.embeddings]
-            return raw if is_list else raw[0]
-        except Exception as e:
-            logger.warning("Gemini embedding failed: %s. Using random vector.", e)
-    
-    embeddings = []
-    for text in texts:
-        # Mock vector (768 dimensions) deterministically seeded by text hash
-        random.seed(hash(text))
-        vec = [random.uniform(-1.0, 1.0) for _ in range(768)]
-        # Normalize
-        norm = sum(x * x for x in vec) ** 0.5
-        embeddings.append([x / norm for x in vec])
-        
-    return embeddings if is_list else embeddings[0]
+    results: List[List[float]] = [None] * len(texts)
+    uncached_indices: List[int] = []
+    uncached_texts: List[str] = []
+
+    for idx, text in enumerate(texts):
+        text_hash = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+        if text_hash in _EMBEDDING_CACHE:
+            _EMBEDDING_CACHE_HITS += 1
+            results[idx] = _EMBEDDING_CACHE[text_hash]
+        else:
+            _EMBEDDING_CACHE_MISSES += 1
+            uncached_indices.append(idx)
+            uncached_texts.append(text)
+
+    if uncached_texts:
+        if not settings.demo_mode:
+            try:
+                from google import genai as google_genai
+                client = google_genai.Client(api_key=settings.gemini_api_key)
+                res = client.models.embed_content(
+                    model=settings.embedding_model,
+                    contents=uncached_texts,
+                    config={"output_dimensionality": 768, "task_type": "retrieval_document"},
+                )
+                raw_embeds = [e.values for e in res.embeddings]
+                for orig_idx, text, emb in zip(uncached_indices, uncached_texts, raw_embeds):
+                    text_hash = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+                    _EMBEDDING_CACHE[text_hash] = emb
+                    results[orig_idx] = emb
+            except Exception as e:
+                logger.warning("Gemini embedding failed (%s), using deterministic mock vectors.", e)
+                for orig_idx, text in zip(uncached_indices, uncached_texts):
+                    random.seed(hash(text))
+                    vec = [random.uniform(-1.0, 1.0) for _ in range(768)]
+                    norm = sum(x * x for x in vec) ** 0.5
+                    emb = [x / norm for x in vec]
+                    text_hash = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+                    _EMBEDDING_CACHE[text_hash] = emb
+                    results[orig_idx] = emb
+        else:
+            for orig_idx, text in zip(uncached_indices, uncached_texts):
+                random.seed(hash(text))
+                vec = [random.uniform(-1.0, 1.0) for _ in range(768)]
+                norm = sum(x * x for x in vec) ** 0.5
+                emb = [x / norm for x in vec]
+                text_hash = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+                _EMBEDDING_CACHE[text_hash] = emb
+                results[orig_idx] = emb
+
+    return results if is_list else results[0]
 
 
 def extract_entities_and_relations(text: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:

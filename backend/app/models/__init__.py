@@ -1,6 +1,6 @@
 """app/models/__init__.py"""
 from app.models.event_log import EventLog, IngestionJob, Source
-from app.models.features import ApiKey, SourceReliability, TopicAlert, TrackedTopic, UserFlag
+from app.models.features import ApiKey, CustomView, SourceReliability, TopicAlert, TrackedTopic, UserFlag
 
 __all__ = [
     "Source",
@@ -11,4 +11,5 @@ __all__ = [
     "TrackedTopic",
     "TopicAlert",
     "ApiKey",
+    "CustomView",
 ]

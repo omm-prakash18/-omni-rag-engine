@@ -105,7 +105,21 @@ class TopicAlert(Base):
     topic: Mapped["TrackedTopic"] = relationship(back_populates="alerts")
 
 
-# ── 4. API Keys & External Rate Limiting ─────────────────────────────────────
+# ── 5. Saved Workspace Views ──────────────────────────────────────────────────
+class CustomView(Base):
+    """Saved user graph layout & filter combinations (Part 1.3)."""
+
+    __tablename__ = "custom_views"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    view_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    query: Mapped[str] = mapped_column(String(500), nullable=False)
+    layout_config: Mapped[Optional[str]] = mapped_column(Text)  # JSON layout (zoom, node positions)
+    preferences_config: Mapped[Optional[str]] = mapped_column(Text)  # JSON UserPreferences
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# ── 6. API Keys & External Rate Limiting ─────────────────────────────────────
 class ApiKey(Base):
     """API key credentials for external read-only REST access."""
 

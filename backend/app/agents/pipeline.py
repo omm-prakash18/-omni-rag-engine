@@ -1,16 +1,13 @@
 """
-app/agents/pipeline.py — Optimized LangGraph Pipeline Orchestrator with Phase A Features.
+app/agents/pipeline.py — Parameterized LangGraph Pipeline Orchestrator.
 
-Architecture:
-1. Shared Cache — LRU query hash lookup
-2. Node 0: Triage / Gate Agent — Fast classification & early exit for off-topic/vague/out-of-corpus queries
-3. Node 1 & 3: Vector Agent + Graph Agent — Parallel retrieval execution
-4. Node 2: CRAG Agent — Knowledge refinement & relevance confidence check
-5. Node 4: Synthesizer Agent — Claim merging & Lost-in-Middle reordering
-6. Feature A2: Consensus Strength Indicator computation
-7. Conditional Edge: Early Exit if 0 claim conflicts exist across candidate groups or for single_fact queries
-8. Node 5: Contradiction Classifier — Entity-group batched structured classification
-9. Feature A1: Source Reliability badge enrichment on GraphNodes
+Architecture & Customization:
+1. Parameterized via UserPreferences (No logic forking!)
+2. Sub-Result Caching for Vector and Graph Agent retrievals
+3. Embedding Hash Caching
+4. Adaptive Retrieval Depth (fast-path top-3 vs full top-10 rerank)
+5. Contradiction Confidence Thresholding & Output Truncation
+6. Speculative Pre-Fetching trigger in background
 """
 from __future__ import annotations
 
@@ -24,45 +21,54 @@ from app.agents.graph_agent import run_graph_agent
 from app.agents.synthesizer import run_synthesizer_agent
 from app.agents.triage import run_triage_agent
 from app.agents.vector_agent import run_vector_agent
-from app.schemas.api import Contradiction, GraphData, GraphEdge, GraphNode, QueryResponse
+from app.schemas.api import Contradiction, GraphData, GraphEdge, GraphNode, QueryResponse, UserPreferences
 from app.services.cache import get_cached_response, set_cached_response
 from app.services.consensus import compute_all_consensus
 from app.services.reliability import get_cached_reliability_badge
+from app.services.speculative_cache import trigger_speculative_prefetch
+from app.services.sub_result_cache import (
+    get_cached_graph_sub_results,
+    get_cached_vector_sub_results,
+    set_cached_graph_sub_results,
+    set_cached_vector_sub_results,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class PipelineState(TypedDict):
-    query: str
-    top_k: int
-    triage_category: str
-    vector_results: List[Dict[str, Any]]
-    graph_results: List[Dict[str, Any]]
-    candidate_groups: List[Dict[str, Any]]
-    contradictions: List[Contradiction]
-    steps: List[str]
-
-
-async def run_omni_pipeline(query: str, top_k: int = 5) -> QueryResponse:
+async def run_omni_pipeline(
+    query: str,
+    top_k: int = 5,
+    preferences: Optional[UserPreferences] = None,
+) -> QueryResponse:
     """
-    Executes the optimized LangGraph pipeline with Phase A feature enrichments.
+    Executes the optimized LangGraph pipeline parameterized by user preferences.
+    Uses multi-layer sub-result caching, adaptive depth, and speculative pre-fetching.
     """
     from app.config import get_settings
     settings = get_settings()
     steps = []
+    warnings = []
 
-    # 0. Check Shared Query Cache
-    cached_res = get_cached_response(query)
-    if cached_res:
-        cached_res.cached = True
-        return cached_res
+    # Default empty preferences if none provided
+    if preferences is None:
+        preferences = UserPreferences()
+
+    # 0. Check Shared Query-Level Cache (bypass if custom preferences are set)
+    has_custom_prefs = bool(preferences.source_weights or preferences.recency_bias or preferences.domain_scope)
+    if not has_custom_prefs:
+        cached_res = get_cached_response(query)
+        if cached_res:
+            cached_res.cached = True
+            return cached_res
 
     # 1. Node 0: Triage / Gate Agent
     triage_res = run_triage_agent(query)
     category = triage_res["category"]
-    steps.append(f"0. Triage Agent: Classified query as '{category}' ({triage_res['reason']})")
+    is_fast_path = (category == "single_fact")
+    steps.append(f"0. Triage Agent: Classified query as '{category}' ({triage_res['reason']}) [fast_path={is_fast_path}]")
 
-    # Early Exit for Gated Queries (off_topic, too_vague, no_data_expected)
+    # Early Exit for Gated Queries
     if category in ("off_topic", "too_vague", "no_data_expected"):
         steps.append(f"   ✓ Pipeline gated out — returning direct response immediately without retrieval.")
         res = QueryResponse(
@@ -70,6 +76,7 @@ async def run_omni_pipeline(query: str, top_k: int = 5) -> QueryResponse:
             contradictions=[],
             graph=GraphData(nodes=[], edges=[]),
             consensus_summary={"summary": "0 sources reporting", "consensus_pct": 0.0},
+            warnings=warnings,
             steps=steps,
             cached=False,
             demo_mode=settings.demo_mode,
@@ -77,15 +84,23 @@ async def run_omni_pipeline(query: str, top_k: int = 5) -> QueryResponse:
         set_cached_response(query, res)
         return res
 
-    # 2. Node Execution based on Triage Category
+    # 2. Node Execution with Sub-Result Caching & Adaptive Retrieval Depth
     vector_results: List[Dict[str, Any]] = []
     graph_results: List[Dict[str, Any]] = []
 
+    effective_top_k = 3 if is_fast_path else top_k
+
     if category == "single_fact":
-        steps.append("1. Vector Agent: Querying Qdrant vector store (single_fact route)...")
+        steps.append(f"1. Vector Agent: Running adaptive fast-path retrieval (top_k={effective_top_k})...")
         steps.append("   ✓ Graph Agent: Skipped for single_fact query.")
-        raw_vector_results = run_vector_agent(query, top_k=top_k)
-        steps.append(f"   ✓ Vector Agent retrieved {len(raw_vector_results)} raw semantic chunks")
+        
+        # Check sub-result cache
+        raw_vector_results = get_cached_vector_sub_results(query, preferences.domain_scope, effective_top_k)
+        if raw_vector_results is None:
+            raw_vector_results = run_vector_agent(query, top_k=effective_top_k, preferences=preferences, is_fast_path=True)
+            set_cached_vector_sub_results(query, raw_vector_results, preferences.domain_scope, effective_top_k)
+        else:
+            steps.append("   ✓ Vector Agent: Sub-result cache hit!")
 
         vector_results, crag_metrics = run_crag_agent(query, raw_vector_results)
         steps.append(
@@ -95,13 +110,23 @@ async def run_omni_pipeline(query: str, top_k: int = 5) -> QueryResponse:
         )
     else:
         steps.append("1. Retrieval Nodes: Running Vector Agent and Graph Agent concurrently...")
-        
+
         async def fetch_vector():
-            return await asyncio.to_thread(run_vector_agent, query, top_k)
+            cached_v = get_cached_vector_sub_results(query, preferences.domain_scope, effective_top_k)
+            if cached_v is not None:
+                return cached_v
+            v_res = await asyncio.to_thread(run_vector_agent, query, effective_top_k, preferences, False)
+            set_cached_vector_sub_results(query, v_res, preferences.domain_scope, effective_top_k)
+            return v_res
 
         async def fetch_graph():
+            cached_g = get_cached_graph_sub_results(query, preferences.domain_scope, 15)
+            if cached_g is not None:
+                return cached_g
             try:
-                return await run_graph_agent(query)
+                g_res = await run_graph_agent(query)
+                set_cached_graph_sub_results(query, g_res, preferences.domain_scope, 15)
+                return g_res
             except Exception as e:
                 logger.warning("Graph Agent parallel task failed: %s", e)
                 return []
@@ -125,6 +150,7 @@ async def run_omni_pipeline(query: str, top_k: int = 5) -> QueryResponse:
                 contradictions=[],
                 graph=GraphData(nodes=[], edges=[]),
                 consensus_summary={"summary": "0 relevant claims found", "consensus_pct": 0.0},
+                warnings=warnings,
                 steps=steps,
                 cached=False,
                 demo_mode=settings.demo_mode,
@@ -132,17 +158,21 @@ async def run_omni_pipeline(query: str, top_k: int = 5) -> QueryResponse:
             set_cached_response(query, res)
             return res
 
+    # Check for context reduction warning due to narrow source weights
+    if preferences.source_weights and len(vector_results) < 2:
+        warnings.append("Warning: Restricted user source weights reduced claim candidate coverage.")
+
     # 3. Node 4: Synthesizer Agent
     steps.append("3. Synthesizer Agent: Merging claims and grouping by entity × metric...")
     candidate_groups = run_synthesizer_agent(query, vector_results, graph_results)
     steps.append(f"   ✓ Synthesizer formed {len(candidate_groups)} claim candidate groups")
 
-    # Feature A2: Compute Consensus Strength Indicators across candidate groups
+    # Feature A2: Compute Consensus Strength Indicators
     consensus_metrics_list = compute_all_consensus(candidate_groups)
-    primary_consensus = consensus_metrics_list[0] if consensus_metrics_list else {"summary": "No active claims", "consensus_pct": 100.0}
+    primary_consensus = consensus_metrics_list[0] if consensus_metrics_list else {"consensus_summary": "No active claims", "consensus_pct": 100.0}
     steps.append(f"   ✓ Consensus Indicator: {primary_consensus['consensus_summary']}")
 
-    # Early Exit for Classifier: check if any candidate group has conflicting claim values
+    # Early Exit Check for Classifier
     has_conflicts = False
     for group in candidate_groups:
         claims = group.get("claims", [])
@@ -157,8 +187,16 @@ async def run_omni_pipeline(query: str, top_k: int = 5) -> QueryResponse:
         steps.append("4. Contradiction Classifier: Skipped — 0 conflicting claim pairs across candidate groups.")
     else:
         steps.append("4. Contradiction Classifier: Evaluating conflicts against taxonomy...")
-        contradictions = run_classifier_agent(candidate_groups)
-        steps.append(f"   ✓ Classifier identified {len(contradictions)} active contradictions")
+        raw_contradictions = run_classifier_agent(candidate_groups)
+
+        # Part 1.1 Contradiction Confidence Thresholding Filter
+        thresh = preferences.contradiction_threshold
+        if thresh > 0.0:
+            contradictions = [c for c in raw_contradictions if c.confidence >= thresh]
+            steps.append(f"   ✓ Classifier identified {len(raw_contradictions)} active contradictions (filtered to {len(contradictions)} at threshold >= {thresh})")
+        else:
+            contradictions = raw_contradictions
+            steps.append(f"   ✓ Classifier identified {len(contradictions)} active contradictions")
 
     # 5. Build React Flow GraphData & Feature A1 Source Reliability Badges
     nodes: List[GraphNode] = []
@@ -176,7 +214,6 @@ async def run_omni_pipeline(query: str, top_k: int = 5) -> QueryResponse:
             src_name = c.get("source_name", "Unknown")
             src_id = f"src_{src_name.lower().replace(' ', '_')}"
 
-            # Feature A1: Retrieve source reliability badge
             rel_info = get_cached_reliability_badge(src_name)
 
             if src_id not in seen_nodes:
@@ -204,7 +241,7 @@ async def run_omni_pipeline(query: str, top_k: int = 5) -> QueryResponse:
                     data={"value": c.get("value", "")}
                 ))
 
-    # Add contradiction conflict edges between sources
+    # Add contradiction conflict edges
     for c in contradictions:
         src_a_id = f"src_{c.source_a.source_name.lower().replace(' ', '_')}"
         src_b_id = f"src_{c.source_b.source_name.lower().replace(' ', '_')}"
@@ -218,14 +255,27 @@ async def run_omni_pipeline(query: str, top_k: int = 5) -> QueryResponse:
             data={"reason": c.reason, "confidence": c.confidence, "type": c.contradiction_type.value}
         ))
 
+    # Part 1.2 Presentation Truncation: Answer Depth Control
+    if preferences.answer_depth == "summary":
+        steps.append("5. Presentation Control: Answer depth truncated to summary mode.")
+        if len(steps) > 4:
+            steps = steps[:4] + ["5. Summary Mode: Extended claim breakdown omitted."]
+
     res = QueryResponse(
         query=query,
         contradictions=contradictions,
         graph=GraphData(nodes=nodes, edges=edges),
         consensus_summary=primary_consensus,
+        warnings=warnings,
         steps=steps,
         cached=False,
         demo_mode=settings.demo_mode,
     )
-    set_cached_response(query, res)
+
+    if not has_custom_prefs:
+        set_cached_response(query, res)
+
+    # Trigger Speculative Pre-Fetching in background
+    trigger_speculative_prefetch(query, candidate_groups)
+
     return res
